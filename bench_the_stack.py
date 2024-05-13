@@ -14,18 +14,18 @@ import json
 The parquet file is the file for which the db_test is created (storing index and content).
 The db_contents is already created, and it is static, with only sha and content.
 """
-parq_size = "small_1M"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, dedup_v1
+parq_size = "small_1M"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_200G, dedup_v1
 small_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/disk2/data/the-stack/the-stack-" + parq_size + ".parquet"
 parq_path = small_parq_path  # change this to run the benchmark on the whole parquet
 parq_size_b = round(os.stat(parq_path).st_size)
 
-db_contents_path = "/disk2/federico/the-stack/rocksdb-sha_content-nocomp-noblock"
-# db_contents_path = "/home/f.ramacciotti/rocksdb-sha_content"
+db_contents_path = "/disk2/federico/the-stack/contents_db-uncomp-4K_block"
 tmp_db_path = "/disk2/federico/db/tmp/"
 
 KiB = 1024
 MiB = 1024 * 1024
+GiB = 1024 * 1024 * 1024
 
 
 def create_fingerprints(content: str, fingerprints: list[str]) -> dict[str, str]:
@@ -49,6 +49,26 @@ def create_fingerprints(content: str, fingerprints: list[str]) -> dict[str, str]
     return out
 
 
+def make_key(order, index_len, max_size, i, row):
+    key = ""
+    sha = str(row["hexsha"])
+    match order:
+        case "parquet":
+            index = str(i).zfill(index_len)
+            key = index + "-" + sha
+        case "filename":
+            key = str(row["filename"])[::-1] + "-" + sha
+        case "filename_repo":
+            key = str(row["filename"])[::-1] + "_" + str(row["repo"]) + "-" + sha
+        case "repo_filename":
+            key = str(row["repo"]) + "_" + str(row["filename"])[::-1] + "-" + sha
+        case "fingerprint":
+            size_len = len(str(max_size))
+            size = str(row["size"]).zfill(size_len)
+            key = str(row[order][lsh]) + "_" + size + "-" + sha
+    return key
+
+
 def test(
     db_contents: aimrocks.DB,
     metainfo_df: pd.DataFrame,
@@ -65,7 +85,8 @@ def test(
     opts.create_if_missing = True
     opts.error_if_exists = True
     opts.compression = compr
-    opts.compression_opts = {"level": level}
+    if level != 0:
+        opts.compression_opts = {"level": level}
     opts.table_factory = aimrocks.BlockBasedTableFactory(block_size=block_size)
     db_test = aimrocks.DB(db_test_path, opts, read_only=False)
 
@@ -131,34 +152,34 @@ def test(
     # for each row in df, get from contents_db and insert in test_db
     start_insert = time.time()
     index_len = len(str(len(metainfo_df)))
-    batch_write = aimrocks.WriteBatch()
-    batch_size = 0
+    batch_size = 100
+    sha_queries = {}  #  dictionary sha: (i, row)
     for i, row in sorted_df.iterrows():
-        content = db_contents.get(str.encode(str(row["hexsha"])))
-        key = ""
-        sha = str(row["hexsha"])
-        match order:
-            case "parquet":
-                index = str(i).zfill(index_len)
-                key = index + "-" + sha
-            case "filename":
-                key = str(row["filename"])[::-1] + "-" + sha
-            case "filename_repo":
-                key = str(row["filename"])[::-1] + "_" + str(row["repo"]) + "-" + sha
-            case "repo_filename":
-                key = str(row["repo"]) + "_" + str(row["filename"])[::-1] + "-" + sha
-            case "fingerprint":
-                size_len = len(str(max_size))
-                size = str(row["size"]).zfill(size_len)
-                key = str(row[order][lsh]) + "_" + size + "-" + sha
-        batch_size += len(content)
-        batch_write.put(str.encode(key), content)
-        if batch_size >= block_size:  # FIXME: this might be super slow
+        sha = str.encode(str(row["hexsha"]))
+        sha_queries[sha] = (i, row)
+        if len(sha_queries) % batch_size == 0:
+            queried = db_contents.multi_get(list(sha_queries.keys()))
+            batch_write = aimrocks.WriteBatch()
+            for sha, content in queried.items():
+                i = sha_queries[sha][0]
+                row = sha_queries[sha][1]
+                key = make_key(order, index_len, max_size, i, row)
+                batch_write.put(str.encode(key), content)
             db_test.write(batch_write)
+            sha_queries.clear()
             batch_write.clear()
-            batch_size = 0
     # write the remainings of the batch
-    db_test.write(batch_write)
+    if len(sha_queries) > 0:
+        queried = db_contents.multi_get(list(sha_queries.keys()))
+        batch_write = aimrocks.WriteBatch()
+        for sha, content in queried.items():
+            i = sha_queries[sha][0]
+            row = sha_queries[sha][1]
+            key = make_key(order, index_len, max_size, i, row)
+            batch_write.put(str.encode(key), content)
+        db_test.write(batch_write)
+        sha_queries.clear()
+        batch_write.clear()
     end_insert = time.time()
     insert_time = end_insert - start_insert
     avg_insert_time = round(insert_time / len(metainfo_df), 3)
@@ -179,35 +200,16 @@ def test(
     n_queries = 10000  # 0: query entire db, X: make X queries
     if n_queries == 0 or n_queries > len(metainfo_df):
         n_queries = len(metainfo_df)
-    queries = np.random.permutation(len(metainfo_df))[:n_queries].to_list()
-    query_log = {}
+    queries = list(np.random.permutation(len(metainfo_df))[:n_queries])
+    query_log = []
     start_access = time.time()
     found = 0
     index_len = len(str(len(metainfo_df)))
     j = 0
     for i, row in metainfo_df.iterrows():
         if int(i) == queries[j]:
-            j += 1
-            query_log[str(j)] = row
-            key = ""
-            sha = str(row["hexsha"])
-            match order:
-                case "parquet":
-                    index = str(i).zfill(index_len)
-                    key = index + "-" + sha
-                case "filename":
-                    fname = str(row["filename"])[::-1]
-                    key = fname + "-" + sha
-                case "filename_repo":
-                    fname = str(row["filename"])[::-1]
-                    key = fname + "_" + str(row["repo"]) + "-" + sha
-                case "repo_filename":
-                    fname = str(row["filename"])[::-1]
-                    key = str(row["repo"]) + "_" + fname + "-" + sha
-                case "fingerprint":
-                    size_len = len(str(max_size))
-                    size = str(row["size"]).zfill(size_len)
-                    key = str(row[order][lsh]) + "_" + size + "-" + sha
+            key = make_key(order, index_len, i, row)
+            query_log.append(str(key))
             got = db_test.get(str.encode(key))
             if got is not None:
                 found += 1
@@ -244,8 +246,10 @@ if __name__ == "__main__":
         # (aimrocks.CompressionType.zstd_compression, 12),
         # (aimrocks.CompressionType.zstd_compression, 22),
         # (aimrocks.CompressionType.snappy_compression, 0),
+        # (aimrocks.CompressionType.zlib_compression, 0),
     ]
     block_sizes = [
+        # 4 KiB,
         256 * KiB,
         # 512 * KiB,
         # 1 * MiB,
