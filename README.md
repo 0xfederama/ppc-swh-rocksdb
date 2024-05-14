@@ -2,7 +2,9 @@
 
 This repo contains the Python code used to test the Permute-Partition-Compress paradigm on Software Heritage and RocksDB. We used Software Heritage code hosted by Hugging Face at [the-stack-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), permuted it using different heuristics and created various RocksDB databases to test their differences and performances.
 
-The benchmark `bench_the_stack.py` architecture is the following. At the beginning we read the entire the-stack parquet and produce a metainfo_database (in this case a pandas dataframe), that we will sort differently based on predefined functions. Than, for each element in the sorted dataframe, we get the content of the file from the `contents_db` and, after creating the key of the record, we insert it in a `test_db` in RocksDB. ![](benchmark_architecture.png)
+The benchmark `bench_the_stack.py` architecture is the following. At the beginning we read the entire the-stack parquet and produce a metainfo_database (in this case a pandas dataframe), that we will sort differently based on predefined functions. Than, for each element in the sorted dataframe, we get the content of the file from the `contents_db` and, after creating the key of the record, we insert it in a `test_db` in RocksDB. ![benchmark architecture](benchmark_architecture.png){width=75%}
+
+## Documentation and options
 
 Sorting options:
 - `filename_repo`: first sort by filename (reversed, so that all file with the same extension go together), than by repo if the filename is the same
@@ -13,7 +15,7 @@ Sorting options:
 Fingerprints:
 - `tlsh`
 
-## Usage and run
+## Setup and run
 The repo contains only one main file for the benchmark, that is `bench_the_stack.py` and some utility scripts in the `scripts` directory, that were used in order to get info or gather early results in the project.
 
 To setup and run the benchmark:
