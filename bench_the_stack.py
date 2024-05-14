@@ -14,10 +14,10 @@ import json
 The parquet file is the file for which the db_test is created (storing index and content).
 The db_contents is already created, and it is static, with only sha and content.
 """
-parq_size = "small_1M"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_200G, dedup_v1
+parq_size = "small_8M"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_10G, small_200G, dedup_v1
 small_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/disk2/data/the-stack/the-stack-" + parq_size + ".parquet"
-parq_path = small_parq_path  # change this to run the benchmark on the whole parquet
+parq_path = small_parq_path if parq_size != "dedup_v1" else full_parq_path
 parq_size_b = round(os.stat(parq_path).st_size)
 
 db_contents_path = "/disk2/federico/the-stack/contents_db-uncomp-4K_block"
