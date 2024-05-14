@@ -43,7 +43,6 @@ def create_fingerprints(content: str, fingerprints: list[str]) -> dict[str, str]
                     # first 8 bytes are metadata
                     fingerprint = tlsh.hash(str.encode(content))[8:]
             # case "min_hash":
-            #     # TODO:
             #     fingerprint = hash(content)
         out[lsh] = fingerprint
     return out
@@ -93,7 +92,7 @@ def test(
     print_level = ""
     if compr != aimrocks.CompressionType.no_compression:
         print_level = "-" + str(level)
-    print(f"{block_size/KiB},{opts.compression}{print_level},", end="", flush=True)
+    print(f"{block_size/KiB},{opts.compression}{print_level},", end="")
 
     # sort if needed
     sorting_time = 0
@@ -147,7 +146,7 @@ def test(
     print_lsh = ""
     if order == "fingerprint":
         print_lsh = "-" + lsh
-    print(f"{order}{print_lsh},{sorting_time},", end="", flush=True)
+    print(f"{order}{print_lsh},{sorting_time},", end="")
 
     # for each row in df, get from contents_db and insert in test_db
     start_insert = time.time()
@@ -183,8 +182,7 @@ def test(
     end_insert = time.time()
     insert_time = end_insert - start_insert
     avg_insert_time = round(insert_time / len(metainfo_df), 3)
-    insert_time = round(end_insert - start_insert, 3)
-    print(f"{insert_time},{avg_insert_time},", end="", flush=True)
+    print(f"{avg_insert_time},", end="")
 
     # measure db size and compression ratio
     total_db_size = 0
@@ -206,11 +204,13 @@ def test(
     found = 0
     index_len = len(str(len(metainfo_df)))
     j = 0
+    got_size = 0
     for i, row in metainfo_df.iterrows():
         if int(i) == queries[j]:
             key = make_key(order, index_len, i, row)
             query_log.append(str(key))
             got = db_test.get(str.encode(key))
+            got_size += len(got)
             if got is not None:
                 found += 1
     end_access = time.time()
@@ -218,7 +218,8 @@ def test(
         print(f"\nERROR: found {found} out of {len(metainfo_df)}")
     access_time = end_access - start_access
     avg_access_time = access_time / len(metainfo_df)
-    print(f"{round(access_time, 5)},{round(avg_access_time, 5)}")
+    get_throughput = (got_size / MiB) / access_time
+    print(f"{round(avg_access_time, 5)},{round(get_throughput, 3)}")
     # print the query log to file
     with open(f"query_log_pid-{os.getpid()}.json", "w") as f:
         f.write(json.dumps(query_log, indent=4))
@@ -245,11 +246,11 @@ if __name__ == "__main__":
         (aimrocks.CompressionType.zstd_compression, 3),
         # (aimrocks.CompressionType.zstd_compression, 12),
         # (aimrocks.CompressionType.zstd_compression, 22),
-        # (aimrocks.CompressionType.snappy_compression, 0),
-        # (aimrocks.CompressionType.zlib_compression, 0),
+        (aimrocks.CompressionType.snappy_compression, 0),
+        (aimrocks.CompressionType.zlib_compression, 0),
     ]
     block_sizes = [
-        # 4 KiB,
+        4 * KiB,
         256 * KiB,
         # 512 * KiB,
         # 1 * MiB,
@@ -303,7 +304,7 @@ if __name__ == "__main__":
 
     # print header
     print(
-        "BLOCK_SIZE(KiB),COMPRESSION,ORDERING,SORTING_TIME(s),INSERT_TIME(s),AVG_INSERT_TIME(s),COMPRESSION_RATIO(%),TOT_SIZE(MiB),ACCESS_TIME,AVG_ACCESS_TIME"
+        "BLOCK_SIZE(KiB),COMPRESSION,ORDERING,SORTING_TIME(s),AVG_INSERT_TIME(s),COMPRESSION_RATIO(%),TOT_SIZE(MiB),AVG_ACCESS_TIME(s),ACCESS_THROUGHPUT(MiB/s)"
     )
 
     for block_size in block_sizes:
