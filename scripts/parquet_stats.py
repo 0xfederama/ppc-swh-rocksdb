@@ -1,76 +1,83 @@
 #!/usr/bin/env python3
 
+import itertools
 import os
 import time
 from pyarrow.parquet import ParquetFile
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 
 parquet_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
-# parquet_path = "/disk2/federico/the-stack/the-stack-small_256M.parquet"
+# parquet_path = "/disk2/federico/the-stack/the-stack-small_10G.parquet"
 KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
 outliers_threshold = 32 * KiB
 
 
-def build_graph(res_dict, xlabel, ylabel, name):
+def build_graph(xaxis, yaxis, xlabel, ylabel, name):
     plt.figure(figsize=(16, 9))
     plt.axvline(x=4, color="grey", linestyle="--")
     # plt.axvline(x=256, color="grey", linestyle="--")
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
-    if name.startswith("log"):
+    ax = plt.gca()
+    if "log" in name:
         plt.yscale("log")
-    plt.bar(list(res_dict.keys()), res_dict.values())
-    plt.savefig(f"graphs/{name}.png", format="png", dpi=120)
+        ax.yaxis.set_major_formatter(
+            mtick.LogFormatterExponent(base=10.0, labelOnlyBase=True)
+        )
+    else:
+        plt.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+    plt.bar(xaxis, yaxis)
+    plt.savefig(f"stats_graphs/{name}.png", format="png")
     plt.close()
+    print(f"Graph {name} created")
 
 
 if __name__ == "__main__":
-    print(f"Starting at {time.asctime()}, pid: {os.getpid()}")
+    print(f"Starting at {time.asctime()}, pid: {os.getpid()}\n")
 
+    start = time.time()
     pf = ParquetFile(parquet_path)
-    languages_sizes = {}
-    languages_files = {}
+    lang_sizes = {}
+    lang_files = {}
     tot_size = 0
     max_size = 0
     n_files = 0
     outliers = 0
-    files_count = {}
     sizes_count = {}
-    sum_files_count = {}
-    sum_sizes_count = {}
+    files_count = {}
     for batch in pf.iter_batches(columns=["lang", "size"]):
         for i, lang in enumerate(batch["lang"]):
             lang = str(lang)
-            cont_size = int(str(batch["size"][i]))
-            languages_sizes[lang] = languages_sizes.get(lang, 0) + cont_size
-            languages_files[lang] = languages_files.get(lang, 0) + 1
-            max_size = max(max_size, cont_size)
+            size = int(str(batch["size"][i]))
+            lang_sizes[lang] = lang_sizes.get(lang, 0) + size
+            lang_files[lang] = lang_files.get(lang, 0) + 1
+            max_size = max(max_size, size)
             n_files += 1
-            tot_size += cont_size
-            # size_kb = round(cont_size / KiB, 5)
-            size_kb = cont_size / KiB
-            if cont_size <= outliers_threshold:
+            tot_size += size
+            size_kb = round(size / KiB, 3)
+            if size <= outliers_threshold:
                 files_count[size_kb] = files_count.get(size_kb, 0) + 1
                 sizes_count[size_kb] = sizes_count.get(size_kb, 0) + size_kb
-                sum_files = 0
-                sum_sizes = 0
-                for size, num in sum_sizes_count.items():
-                    if size < size_kb:
-                        sum_files += files_count[size]
-                        sum_sizes += sizes_count[size]
-                    if size > size_kb:
-                        sum_files_count[size] += 1
-                        sum_sizes_count[size] += size_kb
-                if size_kb in sum_files_count:
-                    sum_files_count[size_kb] += 1
-                    sum_sizes_count[size_kb] += size_kb
-                else:
-                    sum_files_count[size_kb] = sum_files + 1
-                    sum_sizes_count[size_kb] = sum_sizes + size_kb
             else:
                 outliers += 1
+
+    end = time.time()
+    print(f"Read file: {round(end-start)} s")
+    start = time.time()
+
+    files_count = dict(sorted(files_count.items()))
+    sizes_count = dict(sorted(sizes_count.items()))
+    x_axis = list(files_count.keys())  # same between files and sizes
+    y_files = files_count.values()
+    y_sizes = sizes_count.values()
+    y_files_sum = list(itertools.accumulate(y_files))
+    y_sizes_sum = list(itertools.accumulate(y_sizes))
+
+    end = time.time()
+    print(f"Sort and accumulate: {round(end-start)} s\n")
 
     print(f"Total size: {round(tot_size / GiB, 3)} GiB")
     print(f"Max file size: {round(max_size / MiB, 3)} MiB")
@@ -79,62 +86,76 @@ if __name__ == "__main__":
     print(
         f"Outliers > {round(outliers_threshold / KiB)} KiB: {outliers} ({round(outliers * 100 / n_files, 3)} %)"
     )
+    print()
 
     # graph for files_count
-    build_graph(files_count, "Size in KiB", "Number of files = size", "files_count")
+    build_graph(x_axis, y_files, "Size in KiB", "Number of files = size", "files_count")
 
     # graph for log_files_count
     build_graph(
-        files_count, "Size in KiB", "Log of number of files = size", "log_files_count"
+        x_axis,
+        y_files,
+        "Size in KiB",
+        "Log of number of files = size",
+        "files_count_log",
     )
 
     # graph for files_count
     build_graph(
-        sum_files_count, "Size in KiB", "Number of files <= size", "sum_files_count"
+        x_axis,
+        y_files_sum,
+        "Size in KiB",
+        "Number of files <= size",
+        "files_count_sum",
     )
 
     # graph for log_files_count
     build_graph(
-        sum_files_count,
+        x_axis,
+        y_files_sum,
         "Size in KiB",
         "Log of number of files <= size",
-        "log_sum_files_count",
+        "files_count_sum_log",
     )
 
     # graph for sizes_count
-    build_graph(sizes_count, "Size in KiB", "Tot file size = size", "sizes_count")
+    build_graph(x_axis, y_sizes, "Size in KiB", "Tot file size = size", "sizes_count")
 
     # graph for log_sizes_count
     build_graph(
-        sizes_count, "Size in KiB", "Log of tot file size = size", "log_sizes_count"
+        x_axis, y_sizes, "Size in KiB", "Log of tot file size = size", "sizes_count_log"
     )
 
     # graph for sizes_count
     build_graph(
-        sum_sizes_count, "Size in KiB", "Tot file size <= size", "sum_sizes_count"
+        x_axis, y_sizes_sum, "Size in KiB", "Tot file size <= size", "sizes_count_sum"
     )
 
     # graph for log_sizes_count
     build_graph(
-        sum_sizes_count,
+        x_axis,
+        y_sizes_sum,
         "Size in KiB",
         "Log of tot file size <= size",
-        "log_sum_sizes_count",
+        "sizes_count_sum_log",
     )
 
+    print(f"Finished graphs, {time.asctime()}")
     # print top x languages
     from operator import itemgetter
 
     sorted_lang_files = {
-        k: v
-        for k, v in sorted(languages_files.items(), key=itemgetter(1), reverse=True)
+        k: v for k, v in sorted(lang_files.items(), key=itemgetter(1), reverse=True)
     }
     i = 0
+    top = 20
+    print(f"\nTop {top} languages:")
     for lang, size in sorted_lang_files.items():
-        if i == 20:
+        if i == top:
             break
         print(
-            f"{lang}: {str(round(languages_sizes[lang] / GiB, 3))} GiB, {str(languages_files[lang])} files"
+            f"{lang}: {str(round(lang_sizes[lang] / GiB, 3))} GiB, {str(lang_files[lang])} files"
         )
+        i += 1
 
-    print(f"Ending at {time.asctime()}")
+    print(f"\nEnding at {time.asctime()}")
