@@ -14,7 +14,7 @@ import json
 The parquet file is the file for which the db_test is created (storing index and content).
 The db_contents is already created, and it is static, with only sha and content.
 """
-parq_size = "small_8M"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_10G, small_200G, dedup_v1
+parq_size = "small_200G"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_10G, small_200G, dedup_v1
 small_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/disk2/data/the-stack/the-stack-" + parq_size + ".parquet"
 parq_path = small_parq_path if parq_size != "dedup_v1" else full_parq_path
@@ -79,7 +79,9 @@ def test(
     max_size: int,
 ):
     # create the test db
-    db_test_path = tmp_db_path + "db_" + parq_size + "_" + str(time.time())
+    db_test_path = (
+        f"{tmp_db_path}db_{parq_size}_{str(compr)}_{str(block_size)}_{int(time.time())}"
+    )
     opts = aimrocks.Options()
     opts.create_if_missing = True
     opts.error_if_exists = True
@@ -195,7 +197,7 @@ def test(
     print(f"{compression_ratio},{total_db_size},", end="")
 
     # measure access times
-    n_queries = 10000  # 0: query entire db, X: make X queries
+    n_queries = 100  # 0: query entire db, X: make X queries
     if n_queries == 0 or n_queries > len(metainfo_df):
         n_queries = len(metainfo_df)
     queries = list(np.random.permutation(len(metainfo_df))[:n_queries])
@@ -203,25 +205,26 @@ def test(
     start_access = time.time()
     found = 0
     index_len = len(str(len(metainfo_df)))
-    j = 0
     got_size = 0
     for i, row in metainfo_df.iterrows():
-        if int(i) == queries[j]:
-            key = make_key(order, index_len, i, row)
+        if int(i) in queries:
+            key = make_key(order, index_len, max_size, i, row)
             query_log.append(str(key))
             got = db_test.get(str.encode(key))
             got_size += len(got)
             if got is not None:
                 found += 1
     end_access = time.time()
-    if found != len(metainfo_df):
-        print(f"\nERROR: found {found} out of {len(metainfo_df)}")
+    if found != len(queries):
+        print(f"\nERROR: found {found} out of {len(queries)} queries")
     access_time = end_access - start_access
     avg_access_time = access_time / len(metainfo_df)
     get_throughput = (got_size / MiB) / access_time
     print(f"{round(avg_access_time, 5)},{round(get_throughput, 3)}")
     # print the query log to file
-    with open(f"query_log_pid-{os.getpid()}.json", "w") as f:
+    with open(
+        f"query_log-pid_{os.getpid()}/{str(compr)}_{block_size}_{order}_{lsh}.json", "w"
+    ) as f:
         f.write(json.dumps(query_log, indent=4))
 
     # delete the db
@@ -271,6 +274,7 @@ if __name__ == "__main__":
     # open the contents db
     opts = aimrocks.Options()
     opts.create_if_missing = False
+    opts.max_open_files = 100000
     db_contents = aimrocks.DB(db_contents_path, opts, read_only=True)
 
     # read parquet to create metadata db (dataframe)
@@ -307,6 +311,9 @@ if __name__ == "__main__":
         "BLOCK_SIZE(KiB),COMPRESSION,ORDERING,SORTING_TIME(s),AVG_INSERT_TIME(s),COMPRESSION_RATIO(%),TOT_SIZE(MiB),AVG_ACCESS_TIME(s),ACCESS_THROUGHPUT(MiB/s)"
     )
 
+    # create query log directory
+    os.makedirs(f"query_log-{os.getpid()}")
+
     for block_size in block_sizes:
         for compr in compressions:
             test_orders = orders
@@ -329,4 +336,4 @@ if __name__ == "__main__":
                         max_size=max_size,
                     )
 
-    print(f"End computation at {time.asctime()}")
+    print(f"\nEnd computation at {time.asctime()}")
