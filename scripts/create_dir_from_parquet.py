@@ -5,10 +5,10 @@ import pandas as pd
 import time
 import os
 
-# parquet_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
-# parquet_path = "/disk2/federico/the-stack/the-stack-small_200G.parquet"
-parq_size = "small_200G"
-parquet_path = f"/disk2/federico/the-stack/the-stack-{parq_size}.parquet"
+parq_size = "small_4096M"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_10G, small_200G, dedup_v1
+small_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
+full_parq_path = "/disk2/data/the-stack/the-stack-" + parq_size + ".parquet"
+parquet_path = small_parq_path if parq_size != "dedup_v1" else full_parq_path
 blobs_path = f"/disk2/federico/blobs/{parq_size}"
 
 KiB = 1024

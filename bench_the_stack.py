@@ -153,7 +153,7 @@ def test(
     # for each row in df, get from contents_db and insert in test_db
     start_insert = time.time()
     index_len = len(str(len(metainfo_df)))
-    batch_size = 100
+    batch_size = 1000
     sha_queries = {}  #  dictionary sha: (i, row)
     for i, row in sorted_df.iterrows():
         sha = str.encode(str(row["hexsha"]))
@@ -240,7 +240,7 @@ if __name__ == "__main__":
     print(f"Hostname: {os.uname()[1]}")
     print(f"Contents RocksDB in {db_contents_path}")
     print(f"Putting temp RocksDBs in {tmp_db_path}")
-    print(f"Dataset {parq_path}, size {parq_size_b} Bytes")
+    print(f"Dataset {parq_path}, size {round(parq_size_b / MiB, 3)} MiB")
     print()
 
     # declare different tests
