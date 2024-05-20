@@ -14,7 +14,7 @@ import json
 The parquet file is the file for which the db_test is created (storing index and content).
 The db_contents is already created, and it is static, with only sha and content.
 """
-parq_size = "small_200G"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_10G, small_200G, dedup_v1
+parq_size = "small_4096M"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_10G, small_200G, dedup_v1
 small_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/disk2/data/the-stack/the-stack-" + parq_size + ".parquet"
 parq_path = small_parq_path if parq_size != "dedup_v1" else full_parq_path
@@ -26,6 +26,7 @@ tmp_db_path = "/disk2/federico/db/tmp/"
 KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
+PID = os.getpid()
 
 
 def create_fingerprints(content: str, fingerprints: list[str]) -> dict[str, str]:
@@ -78,7 +79,9 @@ def test(
     lsh: str,
     max_size: int,
 ):
-    # create the test db
+    ######################
+    # create the test db #
+    ######################
     db_test_path = (
         f"{tmp_db_path}db_{parq_size}_{str(compr)}_{str(block_size)}_{int(time.time())}"
     )
@@ -96,7 +99,9 @@ def test(
         print_level = "-" + str(level)
     print(f"{block_size/KiB},{opts.compression}{print_level},", end="")
 
-    # sort if needed
+    ##################
+    # sort if needed #
+    ##################
     sorting_time = 0
     sorted_df = metainfo_df
     if compr != aimrocks.CompressionType.no_compression and order != "parquet":
@@ -150,11 +155,14 @@ def test(
         print_lsh = "-" + lsh
     print(f"{order}{print_lsh},{sorting_time},", end="")
 
-    # for each row in df, get from contents_db and insert in test_db
+    #####################
+    # build the test db #
+    #####################
     start_insert = time.time()
     index_len = len(str(len(metainfo_df)))
     batch_size = 1000
     sha_queries = {}  #  dictionary sha: (i, row)
+    # for each row in df, get from contents_db and insert in test_db
     for i, row in sorted_df.iterrows():
         sha = str.encode(str(row["hexsha"]))
         sha_queries[sha] = (i, row)
@@ -183,10 +191,12 @@ def test(
         batch_write.clear()
     end_insert = time.time()
     insert_time = end_insert - start_insert
-    avg_insert_time = round(insert_time / len(metainfo_df), 3)
+    avg_insert_time = round(insert_time / len(metainfo_df), 5)
     print(f"{avg_insert_time},", end="")
 
-    # measure db size and compression ratio
+    #########################################
+    # measure db size and compression ratio #
+    #########################################
     total_db_size = 0
     for dirpath, _, filenames in os.walk(db_test_path):
         for f in filenames:
@@ -194,40 +204,77 @@ def test(
             if not os.path.islink(fp):
                 total_db_size += os.path.getsize(fp)
     compression_ratio = round((total_db_size * 100) / parq_size_b, 3)
-    print(f"{compression_ratio},{total_db_size},", end="")
+    total_db_size_mb = round(total_db_size / KiB, 3)
+    print(f"{compression_ratio},{total_db_size_mb},", end="")
 
-    # measure access times
-    n_queries = 100  # 0: query entire db, X: make X queries
+    ########################
+    # measure access times #
+    ########################
+    n_queries = 500  # 0: query entire db, X: make X queries
     if n_queries == 0 or n_queries > len(metainfo_df):
         n_queries = len(metainfo_df)
     queries = list(np.random.permutation(len(metainfo_df))[:n_queries])
     query_log = []
-    start_access = time.time()
-    found = 0
-    index_len = len(str(len(metainfo_df)))
+    found_sg = 0
+    found_mg10 = 0
+    found_mg100 = 0
     got_size = 0
+    ind_query = 1
+    keys_get_10 = []
+    keys_get_100 = []
+    tot_sg_time = 0
+    tot_mg10_time = 0
+    tot_mg100_time = 0
+    index_len = len(str(len(metainfo_df)))
     for i, row in metainfo_df.iterrows():
         if int(i) in queries:
             key = make_key(order, index_len, max_size, i, row)
             query_log.append(str(key))
+            keys_get_10.append(key)
+            keys_get_100.append(key)
+            # test single get
+            start_sg_time = time.time()
             got = db_test.get(str.encode(key))
+            end_sg_time = time.time()
+            tot_sg_time += end_sg_time - start_sg_time
             got_size += len(got)
-            if got is not None:
-                found += 1
-    end_access = time.time()
-    if found != len(queries):
-        print(f"\nERROR: found {found} out of {len(queries)} queries")
-    access_time = end_access - start_access
-    avg_access_time = access_time / len(metainfo_df)
-    get_throughput = (got_size / MiB) / access_time
-    print(f"{round(avg_access_time, 5)},{round(get_throughput, 3)}")
+            found_sg += sum(x is not None for x in [got])
+            # test multi gets
+            if ind_query % 10 == 0:
+                start_mg_time = time.time()
+                gotlist = db_test.multi_get(keys_get_10)
+                end_mg_time = time.time()
+                tot_mg10_time += end_mg_time - start_mg_time
+                found_mg10 += sum(x is not None for x in gotlist)
+            if ind_query % 100 == 0:
+                start_mg_time = time.time()
+                gotlist = db_test.multi_get(keys_get_100)
+                end_mg_time = time.time()
+                tot_mg100_time += end_mg_time - start_mg_time
+                found_mg100 += sum(x is not None for x in gotlist)
+    if found_sg != len(queries):
+        print(f"\nERROR: found {found_sg} out of {len(queries)} queries")
+    if not (found_sg == found_mg10 == found_mg100):
+        print(f"ERROR: found numbers differ: {found_sg}, {found_mg10}, {found_mg100}")
+    # compute times
+    avg_sg_time = tot_sg_time / n_queries
+    avg_mg10_time = tot_mg10_time / n_queries
+    avg_mg100_time = tot_mg100_time / n_queries
+    sg_throughput = (got_size / MiB) / avg_sg_time
+    mg10_throughput = (got_size / MiB) / avg_mg10_time
+    mg100_throughput = (got_size / MiB) / avg_mg100_time
+    print(
+        f"{round(avg_sg_time * 1000, 3)},{round(sg_throughput, 3)},{round(avg_mg10_time * 1000, 3)},{round(mg10_throughput, 3)},{round(avg_mg100_time * 1000, 3)},{round(mg100_throughput, 3)}"
+    )
     # print the query log to file
     with open(
-        f"query_log-pid_{os.getpid()}/{str(compr)}_{block_size}_{order}_{lsh}.json", "w"
+        f"query_log-{PID}/{str(compr)}_{block_size}_{order}_{lsh}.json", "w"
     ) as f:
         f.write(json.dumps(query_log, indent=4))
 
-    # delete the db
+    #################
+    # delete the db #
+    #################
     del db_test
     if os.path.exists(db_test_path):
         shutil.rmtree(db_test_path)
@@ -235,7 +282,7 @@ def test(
 
 if __name__ == "__main__":
     print(f"Start computation at {time.asctime()}")
-    print(f"PID: {os.getpid()}")
+    print(f"PID: {PID}")
     print(f"User: {os.getlogin()}")
     print(f"Hostname: {os.uname()[1]}")
     print(f"Contents RocksDB in {db_contents_path}")
@@ -308,11 +355,11 @@ if __name__ == "__main__":
 
     # print header
     print(
-        "BLOCK_SIZE(KiB),COMPRESSION,ORDERING,SORTING_TIME(s),AVG_INSERT_TIME(s),COMPRESSION_RATIO(%),TOT_SIZE(MiB),AVG_ACCESS_TIME(s),ACCESS_THROUGHPUT(MiB/s)"
+        "BLOCK_SIZE(KiB),COMPRESSION,ORDERING,SORTING_TIME(s),AVG_INSERT_TIME(s),COMPRESSION_RATIO(%),TOT_SIZE(MiB),AVG_SINGLE_GET_TIME(ms),SINGLE_GET_THROUGHPUT(KiB/s),AVG_MULTI_GET_10_TIME(ms),MULTI_GET_10_THROUGHPUT(MiB/S),AVG_MULTI_GET_100_TIME(ms),MULTI_GET_100_THROUGHPUT(MiB/S)"
     )
 
     # create query log directory
-    os.makedirs(f"query_log-{os.getpid()}")
+    os.makedirs(f"query_log-{PID}")
 
     for block_size in block_sizes:
         for compr in compressions:
