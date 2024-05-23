@@ -204,8 +204,8 @@ def test(
             if not os.path.islink(fp):
                 total_db_size += os.path.getsize(fp)
     compression_ratio = round((total_db_size * 100) / parq_size_b, 3)
-    total_db_size_mb = round(total_db_size / KiB, 3)
-    print(f"{compression_ratio},{total_db_size_mb},", end="")
+    total_db_size_gb = round(total_db_size / GiB, 3)
+    print(f"{compression_ratio},{total_db_size_gb},", end="")
 
     ########################
     # measure access times #
@@ -230,8 +230,8 @@ def test(
         if int(i) in queries:
             key = make_key(order, index_len, max_size, i, row)
             query_log.append(str(key))
-            keys_get_10.append(key)
-            keys_get_100.append(key)
+            keys_get_10.append(str.encode(key))
+            keys_get_100.append(str.encode(key))
             # test single get
             start_sg_time = time.time()
             got = db_test.get(str.encode(key))
@@ -244,14 +244,17 @@ def test(
                 start_mg_time = time.time()
                 gotlist = db_test.multi_get(keys_get_10)
                 end_mg_time = time.time()
+                keys_get_10.clear()
                 tot_mg10_time += end_mg_time - start_mg_time
                 found_mg10 += sum(x is not None for x in gotlist)
             if ind_query % 100 == 0:
                 start_mg_time = time.time()
                 gotlist = db_test.multi_get(keys_get_100)
                 end_mg_time = time.time()
+                keys_get_100.clear()
                 tot_mg100_time += end_mg_time - start_mg_time
                 found_mg100 += sum(x is not None for x in gotlist)
+            ind_query += 1
     if found_sg != len(queries):
         print(f"\nERROR: found {found_sg} out of {len(queries)} queries")
     if not (found_sg == found_mg10 == found_mg100):
@@ -260,9 +263,9 @@ def test(
     avg_sg_time = tot_sg_time / n_queries
     avg_mg10_time = tot_mg10_time / n_queries
     avg_mg100_time = tot_mg100_time / n_queries
-    sg_throughput = (got_size / MiB) / avg_sg_time
-    mg10_throughput = (got_size / MiB) / avg_mg10_time
-    mg100_throughput = (got_size / MiB) / avg_mg100_time
+    sg_throughput = (got_size / MiB) / tot_sg_time
+    mg10_throughput = (got_size / MiB) / tot_mg10_time
+    mg100_throughput = (got_size / MiB) / tot_mg100_time
     print(
         f"{round(avg_sg_time * 1000, 3)},{round(sg_throughput, 3)},{round(avg_mg10_time * 1000, 3)},{round(mg10_throughput, 3)},{round(avg_mg100_time * 1000, 3)},{round(mg100_throughput, 3)}"
     )
@@ -355,7 +358,7 @@ if __name__ == "__main__":
 
     # print header
     print(
-        "BLOCK_SIZE(KiB),COMPRESSION,ORDERING,SORTING_TIME(s),AVG_INSERT_TIME(s),COMPRESSION_RATIO(%),TOT_SIZE(MiB),AVG_SINGLE_GET_TIME(ms),SINGLE_GET_THROUGHPUT(KiB/s),AVG_MULTI_GET_10_TIME(ms),MULTI_GET_10_THROUGHPUT(MiB/S),AVG_MULTI_GET_100_TIME(ms),MULTI_GET_100_THROUGHPUT(MiB/S)"
+        "BLOCK_SIZE(KiB),COMPRESSION,ORDERING,SORTING_TIME(s),AVG_INSERT_TIME(s),COMPRESSION_RATIO(%),TOT_SIZE(GiB),AVG_SINGLE_GET_TIME(ms),SINGLE_GET_THROUGHPUT(KiB/s),AVG_MULTI_GET_10_TIME(ms),MULTI_GET_10_THROUGHPUT(MiB/S),AVG_MULTI_GET_100_TIME(ms),MULTI_GET_100_THROUGHPUT(MiB/S)"
     )
 
     # create query log directory
