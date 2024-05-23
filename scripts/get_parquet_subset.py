@@ -2,20 +2,46 @@
 
 import os
 import time
-from pyarrow.parquet import ParquetFile
 import pandas as pd
+from pyarrow.parquet import ParquetFile
 
 KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
-size = 200 * GiB
-size_str = "200G"
+size = 1 * GiB
+size_str = "1G"
+bigfiles_min_size = 4 * MiB
+run = "bigfiles"  # bigfiles or standard
+
 parquet_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
 
-if __name__ == "__main__":
-    print(f"PID: {os.getpid()}")
-    start_time = time.time()
 
+def get_parq_bigfiles():
+    tot_size = 0
+    tot_files = 0
+    pf = ParquetFile(parquet_path)
+    dataframes = []
+    for batch in pf.iter_batches():
+        batch_df = batch.to_pandas()
+        for i, row in batch_df.iterrows():
+            cont_size = int(row["size"])
+            if cont_size > bigfiles_min_size:
+                dataframes.append(row.to_dict())
+                tot_size += cont_size
+                tot_files += 1
+                if tot_size >= size:
+                    break
+        if tot_size >= size:
+            break
+    df = pd.DataFrame(dataframes)
+    print(f"Total size reached: {round(tot_size / GiB, 3)} GiB")
+    print(f"Total number of files: {tot_files}")
+    df.to_parquet(
+        f"/disk2/federico/the-stack/the-stack-small_{size_str}_bigfiles.parquet"
+    )
+
+
+def get_parq_standard():
     # assuming 600 rows = 1 MB (from tests)
     size_mb = size / MiB
     batch_size = 600
@@ -27,7 +53,6 @@ if __name__ == "__main__":
         batch_size = batch_size * 1024
     print(f"{reads} read of {batch_size} batch size rows")
 
-    # read the parquet
     pf = ParquetFile(parquet_path)
     parquet_iterator = pf.iter_batches(batch_size=batch_size)
     data = []
@@ -41,7 +66,20 @@ if __name__ == "__main__":
 
     df.to_parquet(f"/disk2/federico/the-stack/the-stack-small_{size_str}.parquet")
 
+
+if __name__ == "__main__":
+    print(f"Starting at {time.asctime()}, pid: {os.getpid()}")
+    print(f"Getting a subset of {size_str} from {parquet_path}")
+    start_time = time.time()
+
+    match run:
+        case "standard":
+            get_parq_standard()
+        case "bigfiles":
+            get_parq_bigfiles()
+
     end_time = time.time()
     tot_time = end_time - start_time
 
     print(f"Parquet created in {round(tot_time)} s")
+    print(f"Ending at {time.asctime()}")
