@@ -9,10 +9,10 @@ KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
 
-size = 10 * GiB  # float('inf') to take all the files
-size_str = "10G"
-minsize = 1012 * KiB  # 0 to take files with all sizes
-minsize_str = "1012K"
+size = 4 * GiB  # float('inf') to take all the files
+size_str = "4G"
+minsize = 990 * KiB  # 0 to take files with all sizes
+minsize_str = "990K"
 
 parq_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
 

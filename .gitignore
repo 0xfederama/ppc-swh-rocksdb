@@ -3,7 +3,7 @@ query_log-*
 
 # Ignore all .out files (like nohup.out)
 *.out
-scripts/out
+out
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
