@@ -17,27 +17,26 @@ parquet_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
 
 if __name__ == "__main__":
     pf = ParquetFile(parquet_path)
-    # assuming 600 rows = 1 MB (from tests), dividev by 2.5 due to parquet's compression ratio
-    batch_size = round(600 / 2.5) + 1
-    tot_rows_to_read = (txt_size / MiB) * (600 / 2.5)
-    reads = tot_rows_to_read / batch_size
-    parquet_iterator = pf.iter_batches(
-        columns=["hexsha", "size", "content"],
-        batch_size=batch_size,
-    )
-    data = []
-    for i in range(int(reads)):
-        # don't iterate on the iterator itself because it will iterate until the file is completely read
-        n_rows = next(parquet_iterator)
-        to_pd = n_rows.to_pandas()
-        data.append(to_pd)
+    tot_size = 0
+    size = 0
+    dataframes = []
+    for batch in pf.iter_batches(columns=["hexsha", "size", "content"]):
+        batch_df = batch.to_pandas()
+        for i, row in batch_df.iterrows():
+            cont_size = int(row["size"])
+            dataframes.append(row.to_dict())
+            tot_size += cont_size
+            if tot_size >= txt_size:
+                break
+        if tot_size >= txt_size:
+            break
 
-    df = pd.concat(data, ignore_index=True)
+    df = pd.DataFrame(dataframes)
 
     # build and write to file
     print("Building the file")
     start_put = time.time()
-    file_path = f"/disk2/federico/the-stack/the-stack-small_{txt_size_str}.txt"
+    file_path = f"/disk2/federico/the-stack/the-stack-txt_test_{txt_size_str}.txt"
     if os.path.exists(file_path):
         os.remove(file_path)
     sha_sizes = []  # made of tuples (sha, start_index, size)
