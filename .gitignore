@@ -5,6 +5,9 @@ query_log-*
 *.out
 out
 
+# Ignore util.md
+util.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
