@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import mmap
 import os
 import shutil
 import time
@@ -24,7 +25,8 @@ full_parq_path = "/disk2/data/the-stack/the-stack-" + parq_size + ".parquet"
 parq_path = small_parq_path if parq_size != "dedup_v1" else full_parq_path
 parq_size_b = round(os.stat(parq_path).st_size)
 
-db_contents_path = "/disk2/federico/the-stack/contents_db-uncomp-4K_block"
+txt_contents_path = "/disk2/federico/the-stack/the-stack-dedup_v1.txt"
+txt_index_path = "/disk2/federico/the-stack/the-stack-dedup_v1-index.json"
 tmp_db_path = "/disk2/federico/db/tmp/"
 
 KiB = 1024
@@ -88,7 +90,8 @@ def get_bs_str(bs: int):
 
 
 def test(
-    db_contents: aimrocks.DB,
+    txt_mmap: mmap,
+    txt_index: dict[str, dict],
     metainfo_df: pd.DataFrame,
     compressor: tuple[aimrocks.CompressionType, int],
     order: str,
@@ -176,45 +179,30 @@ def test(
     #####################
     # build the test db #
     #####################
-    tot_insert_time = 0
+    start_insert = time.time()
     index_len = len(str(len(metainfo_df)))
     batch_size = 10000
     ins_size = 0
-    sha_queries = {}  #  dictionary sha: (i, row)
-    # for each row in df, get from contents_db and insert in test_db
+    # for each row in df, get from txt_contents and insert in test_db
+    batch_write = aimrocks.WriteBatch()
     for i, row in sorted_df.iterrows():
-        sha = str.encode(str(row["hexsha"]))
+        sha = str(row["hexsha"])
         ins_size += int(str(row["size"]))
-        sha_queries[sha] = (i, row)
-        if len(sha_queries) % batch_size == 0:
-            queried = db_contents.multi_get(list(sha_queries.keys()))
-            batch_write = aimrocks.WriteBatch()
-            for sha, content in queried.items():
-                i = sha_queries[sha][0]
-                row = sha_queries[sha][1]
-                key = make_key(order, index_len, max_size, i, row)
-                batch_write.put(str.encode(key), content)
-            start_insert = time.time()
+        coords = txt_index[sha]
+        start = coords[0]
+        length = coords[1]
+        txt_mmap.seek(start)
+        content = txt_mmap.read(length)
+        key = make_key(order, index_len, max_size, i, row)
+        batch_write.put(str.encode(key), str.encode(content))
+        if int(i) % batch_size == 0:
             db_test.write(batch_write)
-            end_insert = time.time()
-            tot_insert_time += end_insert - start_insert
-            sha_queries.clear()
             batch_write.clear()
-    # write the remainings of the batch
-    if len(sha_queries) > 0:
-        queried = db_contents.multi_get(list(sha_queries.keys()))
-        batch_write = aimrocks.WriteBatch()
-        for sha, content in queried.items():
-            i = sha_queries[sha][0]
-            row = sha_queries[sha][1]
-            key = make_key(order, index_len, max_size, i, row)
-            batch_write.put(str.encode(key), content)
-        start_insert = time.time()
+    if batch_write.count() > 0:
         db_test.write(batch_write)
-        end_insert = time.time()
-        tot_insert_time += end_insert - start_insert
-        sha_queries.clear()
         batch_write.clear()
+    end_insert = time.time()
+    tot_insert_time = end_insert - start_insert
     ins_throughput = round(ins_size / KiB / tot_insert_time, 3)
     results["ins_thr"][bs_str][compr_str] = ins_throughput
     print(f"{ins_throughput},", end="")
@@ -236,28 +224,24 @@ def test(
     ########################
     # measure access times #
     ########################
-    n_queries = 100  # 0: query entire db, X: make X queries
+    n_queries = 500  # 0: query entire db, X: make X queries
     if n_queries == 0 or n_queries > len(metainfo_df):
         n_queries = len(metainfo_df)
     queries = list(np.random.permutation(len(metainfo_df))[:n_queries])
     query_log = []
     found_sg = 0
-    found_mg10 = 0
-    found_mg100 = 0
+    found_mg = 0
     got_size = 0
     ind_query = 1
-    keys_get_10 = []
-    keys_get_100 = []
+    keys_mget = []
     tot_sg_time = 0
-    tot_mg10_time = 0
-    tot_mg100_time = 0
+    tot_mg_time = 0
     index_len = len(str(len(metainfo_df)))
     for i, row in metainfo_df.iterrows():
         if int(i) in queries:
             key = make_key(order, index_len, max_size, i, row)
             query_log.append(str(key))
-            keys_get_10.append(str.encode(key))
-            keys_get_100.append(str.encode(key))
+            keys_mget.append(str.encode(key))
             # test single get
             start_sg_time = time.time()
             got = db_test.get(str.encode(key))
@@ -265,33 +249,33 @@ def test(
             tot_sg_time += end_sg_time - start_sg_time
             got_size += len(got)
             found_sg += sum(x is not None for x in [got])
-            # test multi gets
-            if ind_query % 5 == 0:
+            # test multi get
+            if ind_query % 100 == 0:
                 start_mg_time = time.time()
-                gotlist = db_test.multi_get(keys_get_10)
+                gotlist = db_test.multi_get(keys_mget)
                 end_mg_time = time.time()
-                keys_get_10.clear()
-                tot_mg10_time += end_mg_time - start_mg_time
-                found_mg10 += sum(x is not None for x in gotlist)
-            if ind_query % 10 == 0:
-                start_mg_time = time.time()
-                gotlist = db_test.multi_get(keys_get_100)
-                end_mg_time = time.time()
-                keys_get_100.clear()
-                tot_mg100_time += end_mg_time - start_mg_time
-                found_mg100 += sum(x is not None for x in gotlist)
+                keys_mget.clear()
+                tot_mg_time += end_mg_time - start_mg_time
+                found_mg += sum(x is not None for x in gotlist)
             ind_query += 1
+    # test remainings of multiget
+    if len(keys_mget) > 0:
+        start_mg_time = time.time()
+        gotlist = db_test.multi_get(keys_mget)
+        end_mg_time = time.time()
+        keys_mget.clear()
+        tot_mg_time += end_mg_time - start_mg_time
+        found_mg += sum(x is not None for x in gotlist)
     if found_sg != len(queries):
         print(f"\nERROR: found {found_sg} out of {len(queries)} queries")
-    if not (found_sg == found_mg10 == found_mg100):
-        print(f"ERROR: found numbers differ: {found_sg}, {found_mg10}, {found_mg100}")
+    if not (found_sg == found_mg):
+        print(f"ERROR: found numbers differ: {found_sg}, {found_mg}")
     # compute times
     sg_thr = (got_size / MiB) / tot_sg_time
-    mg10_thr = (got_size / MiB) / tot_mg10_time
-    mg100_thr = (got_size / MiB) / tot_mg100_time
+    mg_thr = (got_size / MiB) / tot_mg_time
     results["sg_thr"][bs_str][compr_str] = round(sg_thr, 3)
-    results["mg_thr"][bs_str][compr_str] = round(mg100_thr, 3)
-    print(f"{round(sg_thr, 3)},{round(mg10_thr, 3)},{round(mg100_thr, 3)}")
+    results["mg_thr"][bs_str][compr_str] = round(mg_thr, 3)
+    print(f"{round(sg_thr, 3)},{round(mg_thr, 3)}")
     # print the query log to file
     if querylog:
         with open(f"query_log-{PID}/{compr_str}_{bs_str}_{order}_{lsh}.json", "w") as f:
@@ -311,7 +295,7 @@ if __name__ == "__main__":
     print(f"PID: {PID}")
     print(f"User: {os.getlogin()}")
     print(f"Hostname: {os.uname()[1]}")
-    print(f"Contents RocksDB in {db_contents_path}")
+    print(f"Content txt in {txt_contents_path}")
     print(f"Putting temp RocksDBs in {tmp_db_path}")
     print(f"Dataset {parq_path}, size {round(parq_size_b / MiB, 3)} MiB")
     print()
@@ -349,14 +333,11 @@ if __name__ == "__main__":
         # "min_hash",
     ]
 
-    # open the contents db
-    opts = aimrocks.Options()
-    opts.create_if_missing = False
-    opts.max_open_files = 100000
-    opts.allow_mmap_reads = True
-    opts.paranoid_checks = False
-    opts.use_adaptive_mutex = True
-    db_contents = aimrocks.DB(db_contents_path, opts, read_only=True)
+    # open the contents txt with mmap and the index file
+    txt_contents_file = open(txt_contents_path, "r")
+    txt_mmap = mmap.mmap(txt_contents_file.fileno(), length=0, access=mmap.PROT_READ)
+    with open(txt_index_path, "r") as f:
+        txt_index = json.load(f)
 
     # read parquet to create metadata db (dataframe)
     start_reading = time.time()
@@ -394,7 +375,7 @@ if __name__ == "__main__":
 
     # print header
     print(
-        "BLOCK_SIZE(KiB),COMPRESSION,ORDER,INSERT_THROUGHPUT(KiB/s),COMPRESSION_RATIO(%),TOT_SIZE(GiB),SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_5_THROUGHPUT(MiB/S),MULTI_GET_10_THROUGHPUT(MiB/S)"
+        "BLOCK_SIZE(KiB),COMPRESSION,ORDER,INSERT_THROUGHPUT(KiB/s),COMPRESSION_RATIO(%),TOT_SIZE(GiB),SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
     )
 
     # create query log directory
@@ -426,7 +407,8 @@ if __name__ == "__main__":
                     test_fingerprints = fingerprints
                 for lsh in test_fingerprints:
                     test(
-                        db_contents=db_contents,
+                        txt_mmap=txt_mmap,
+                        txt_index=txt_index,
                         metainfo_df=metainfo_df,
                         compressor=compr,
                         order=order,
