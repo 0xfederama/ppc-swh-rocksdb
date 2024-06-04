@@ -107,9 +107,10 @@ def test(
     opts = aimrocks.Options()
     opts.create_if_missing = True
     opts.error_if_exists = True
-    # opts.allow_mmap_reads = True
-    # opts.paranoid_checks = False
-    # opts.use_adaptive_mutex = True
+    # options to make db faster
+    opts.allow_mmap_reads = True
+    opts.paranoid_checks = False
+    opts.use_adaptive_mutex = True
     opts.compression = compr
     if level != 0:
         opts.compression_opts = {"level": level}
@@ -123,10 +124,8 @@ def test(
     ##################
     # sort if needed #
     ##################
-    # sorting_time = 0
     sorted_df = metainfo_df
     if compr != aimrocks.CompressionType.no_compression and order != "parquet":
-        # start_sorting = time.time()
         match order:
             case "filename_repo":
                 sorted_df = metainfo_df.sort_values(
@@ -169,20 +168,17 @@ def test(
                     ignore_index=True,
                     ascending=[True, False],
                 )
-        # end_sorting = time.time()
-        # sorting_time = round(end_sorting - start_sorting, 3)
     print_lsh = ""
     if order == "fingerprint":
         print_lsh = "-" + lsh
     print(f"{order}{print_lsh},", end="")
-    # print(f"{sorting_time},", end="")
 
     #####################
     # build the test db #
     #####################
-    start_insert = time.time()
+    tot_insert_time = 0
     index_len = len(str(len(metainfo_df)))
-    batch_size = 1000
+    batch_size = 10000
     ins_size = 0
     sha_queries = {}  #  dictionary sha: (i, row)
     # for each row in df, get from contents_db and insert in test_db
@@ -198,7 +194,10 @@ def test(
                 row = sha_queries[sha][1]
                 key = make_key(order, index_len, max_size, i, row)
                 batch_write.put(str.encode(key), content)
+            start_insert = time.time()
             db_test.write(batch_write)
+            end_insert = time.time()
+            tot_insert_time += end_insert - start_insert
             sha_queries.clear()
             batch_write.clear()
     # write the remainings of the batch
@@ -210,13 +209,13 @@ def test(
             row = sha_queries[sha][1]
             key = make_key(order, index_len, max_size, i, row)
             batch_write.put(str.encode(key), content)
+        start_insert = time.time()
         db_test.write(batch_write)
+        end_insert = time.time()
+        tot_insert_time += end_insert - start_insert
         sha_queries.clear()
         batch_write.clear()
-    end_insert = time.time()
-    ins_time = end_insert - start_insert
-    # avg_insert_time = round(ins_time / len(metainfo_df), 5)
-    ins_throughput = round(ins_size / KiB / ins_time, 3)
+    ins_throughput = round(ins_size / KiB / tot_insert_time, 3)
     results["ins_thr"][bs_str][compr_str] = ins_throughput
     print(f"{ins_throughput},", end="")
 
@@ -287,19 +286,15 @@ def test(
     if not (found_sg == found_mg10 == found_mg100):
         print(f"ERROR: found numbers differ: {found_sg}, {found_mg10}, {found_mg100}")
     # compute times
-    sg_throughput = (got_size / MiB) / tot_sg_time
-    mg10_throughput = (got_size / MiB) / tot_mg10_time
-    mg100_throughput = (got_size / MiB) / tot_mg100_time
-    results["sg_thr"][bs_str][compr_str] = round(sg_throughput, 3)
-    results["mg_thr"][bs_str][compr_str] = round(mg100_throughput, 3)
-    print(
-        f"{round(sg_throughput, 3)},{round(mg10_throughput, 3)},{round(mg100_throughput, 3)}"
-    )
+    sg_thr = (got_size / MiB) / tot_sg_time
+    mg10_thr = (got_size / MiB) / tot_mg10_time
+    mg100_thr = (got_size / MiB) / tot_mg100_time
+    results["sg_thr"][bs_str][compr_str] = round(sg_thr, 3)
+    results["mg_thr"][bs_str][compr_str] = round(mg100_thr, 3)
+    print(f"{round(sg_thr, 3)},{round(mg10_thr, 3)},{round(mg100_thr, 3)}")
     # print the query log to file
     if querylog:
-        with open(
-            f"query_log-{PID}/{str(compr)}_{block_size}_{order}_{lsh}.json", "w"
-        ) as f:
+        with open(f"query_log-{PID}/{compr_str}_{bs_str}_{order}_{lsh}.json", "w") as f:
             f.write(json.dumps(query_log, indent=4))
 
     #################
@@ -327,9 +322,7 @@ if __name__ == "__main__":
         (aimrocks.CompressionType.zstd_compression, 3),
         (aimrocks.CompressionType.zstd_compression, 12),
         (aimrocks.CompressionType.zstd_compression, 22),
-        # (aimrocks.CompressionType.zstd_compression, 12),
-        # (aimrocks.CompressionType.zstd_compression, 22),
-        # (aimrocks.CompressionType.zlib_compression, 0),
+        (aimrocks.CompressionType.zlib_compression, 6),
         (aimrocks.CompressionType.zlib_compression, 9),
         (aimrocks.CompressionType.snappy_compression, 0),
     ]
@@ -360,9 +353,9 @@ if __name__ == "__main__":
     opts = aimrocks.Options()
     opts.create_if_missing = False
     opts.max_open_files = 100000
-    # opts.allow_mmap_reads = True
-    # opts.paranoid_checks = False
-    # opts.use_adaptive_mutex = True
+    opts.allow_mmap_reads = True
+    opts.paranoid_checks = False
+    opts.use_adaptive_mutex = True
     db_contents = aimrocks.DB(db_contents_path, opts, read_only=True)
 
     # read parquet to create metadata db (dataframe)
