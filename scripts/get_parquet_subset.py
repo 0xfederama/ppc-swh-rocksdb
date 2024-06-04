@@ -44,7 +44,7 @@ if __name__ == "__main__":
     print(f"Total size reached: {round(tot_size / GiB, 3)} GiB")
     print(f"Total number of files: {tot_files}")
     if size == float("inf"):
-        size_str = round(tot_size / GiB) + "G"
+        size_str = str(round(tot_size / GiB)) + "G"
     if minsize == 0:
         filename = f"/disk2/federico/the-stack/the-stack-{size_str}.parquet"
     else:

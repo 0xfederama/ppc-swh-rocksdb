@@ -9,7 +9,7 @@ import os
 
 test_get = True
 test_put = False
-parquet_path = "/disk2/federico/the-stack/the-stack-small_1M.parquet"
+parquet_path = "/disk2/federico/the-stack/the-stack-8M.parquet"
 content_db_paths = [
     # "/disk2/federico/the-stack/rocksdb-sha_content-zstd-4Mblock"
     # "/disk2/federico/the-stack/rocksdb-sha_content-zstd-noblock",
@@ -17,21 +17,18 @@ content_db_paths = [
     # "/disk2/federico/the-stack/rocksdb-sha_content-nocomp-noblock",
     # "/disk2/federico/the-stack/rocksdb-sha_content-nocomp-noblock-1Kcontent",
     # "/disk2/federico/the-stack/rocksdb-sha_content-nocomp-noblock-10Kcontent",
-    "/disk2/federico/rocksdb_perf_test/db-nocomp-256K_block",
-    "/disk2/federico/rocksdb_perf_test/db-snappy-256K_block",
-    "/disk2/federico/rocksdb_perf_test/db-zlib-256K_block",
-    "/disk2/federico/rocksdb_perf_test/db-zstd-256K_block",
-    # "/disk2/federico/rocksdb_perf_test/db-lz4-256K_block",
-    "/disk2/federico/rocksdb_perf_test/db-nocomp-4K_block",
-    "/disk2/federico/rocksdb_perf_test/db-snappy-4K_block",
-    "/disk2/federico/rocksdb_perf_test/db-zlib-4K_block",
-    "/disk2/federico/rocksdb_perf_test/db-zstd-4K_block",
-    # "/disk2/federico/rocksdb_perf_test/db-lz4-4K_block",
-    "/disk2/federico/rocksdb_perf_test/db-nocomp-4M_block",
-    "/disk2/federico/rocksdb_perf_test/db-snappy-4M_block",
-    "/disk2/federico/rocksdb_perf_test/db-zlib-4M_block",
-    "/disk2/federico/rocksdb_perf_test/db-zstd-4M_block",
-    # "/disk2/federico/rocksdb_perf_test/db-lz4-4M_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-nocomp-4K_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-snappy-4K_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-zlib-4K_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-zstd-4K_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-nocomp-256K_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-snappy-256K_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-zlib-256K_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-zstd-256K_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-nocomp-4M_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-snappy-4M_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-zlib-4M_block",
+    "/disk2/federico/db/rocksdb_perf_test/db-zstd-4M_block",
 ]
 test_db_dir = "/disk2/federico/db/tmp"
 
@@ -49,9 +46,9 @@ if __name__ == "__main__":
     df = pd.concat(dataframes, ignore_index=True)
 
     # test get performance
-    print(f"GET test, reading from {parquet_path}\n")
+    print(f"GET test, reading {len(df)} records taken from {parquet_path}")
     print(
-        "CONTENT_DB,SINGLE_TOT_TIME(s),TIME/GET(s),PERF(MiB/s),MULTI_TOT_TIME(s),TIME/GET(s),PERF(MiB/s)"
+        "CONTENT_DB,SINGLE_TIME/GET(s),SG_THROUGHPUT(MiB/s),MULTI_TIME/GET(s),MG_THROUGHPUT(MiB/s)"
     )
     if test_get:
         for content_db_path in content_db_paths:
@@ -59,8 +56,11 @@ if __name__ == "__main__":
             opts = aimrocks.Options()
             opts.max_open_files = 40000
             opts.create_if_missing = False
+            # opts.allow_mmap_reads = True
+            # opts.paranoid_checks = False
+            # opts.use_adaptive_mutex = True
             contents_db = aimrocks.DB(content_db_path, opts, read_only=True)
-            tot_get_time = 0
+            tot_sg_time = 0
             tot_get_size = 0
             shas = []
             # test single gets
@@ -71,22 +71,22 @@ if __name__ == "__main__":
                 content = contents_db.get(str.encode(sha))
                 get_end = time.time()
                 tot_get_size += len(content)
-                tot_get_time += get_end - get_start
+                tot_sg_time += get_end - get_start
             total_get_size_mb = tot_get_size / MiB
             print(
-                f"{round(tot_get_time, 3)},{round(tot_get_time/len(df), 5)},{round(total_get_size_mb / tot_get_time, 3)},",
+                f"{round(tot_sg_time/len(df), 5)},{round(total_get_size_mb / tot_sg_time, 3)},",
                 end="",
             )
             # test multi-gets in chunks of 100
-            tot_get_time = 0
+            tot_mg_time = 0
             for i in range(0, len(shas), 100):
                 j = min(i + 10, len(shas))
                 get_start = time.time()
                 out = contents_db.multi_get(shas[i:j])
                 get_end = time.time()
-                tot_get_time += get_end - get_start
+                tot_mg_time += get_end - get_start
             print(
-                f"{round(tot_get_time, 3)},{round(tot_get_time/len(df), 5)},{round(total_get_size_mb / tot_get_time, 3)}"
+                f"{round(tot_mg_time/len(df), 5)},{round(total_get_size_mb / tot_mg_time, 3)}"
             )
 
     block_sizes = [
