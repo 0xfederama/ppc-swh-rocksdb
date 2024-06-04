@@ -7,9 +7,9 @@ import aimrocks
 import time
 import os
 
-test_get = True
-test_put = False
-parquet_path = "/disk2/federico/the-stack/the-stack-8M.parquet"
+test_get = False
+test_put = True
+parquet_path = "/disk2/federico/the-stack/the-stack-4G.parquet"
 content_db_paths = [
     # "/disk2/federico/the-stack/rocksdb-sha_content-zstd-4Mblock"
     # "/disk2/federico/the-stack/rocksdb-sha_content-zstd-noblock",
@@ -46,19 +46,19 @@ if __name__ == "__main__":
     df = pd.concat(dataframes, ignore_index=True)
 
     # test get performance
-    print(f"GET test, reading {len(df)} records taken from {parquet_path}")
-    print(
-        "CONTENT_DB,SINGLE_TIME/GET(s),SG_THROUGHPUT(MiB/s),MULTI_TIME/GET(s),MG_THROUGHPUT(MiB/s)"
-    )
     if test_get:
+        print(f"GET test, reading {len(df)} records taken from {parquet_path}")
+        print(
+            "CONTENT_DB,SINGLE_TIME/GET(s),SG_THROUGHPUT(MiB/s),MULTI_TIME/GET(s),MG_THROUGHPUT(MiB/s)"
+        )
         for content_db_path in content_db_paths:
             print(f"{content_db_path.split('/')[-1]},", end="")
             opts = aimrocks.Options()
             opts.max_open_files = 40000
             opts.create_if_missing = False
-            # opts.allow_mmap_reads = True
-            # opts.paranoid_checks = False
-            # opts.use_adaptive_mutex = True
+            opts.allow_mmap_reads = True
+            opts.paranoid_checks = False
+            opts.use_adaptive_mutex = True
             contents_db = aimrocks.DB(content_db_path, opts, read_only=True)
             tot_sg_time = 0
             tot_get_size = 0
@@ -80,9 +80,10 @@ if __name__ == "__main__":
             # test multi-gets in chunks of 100
             tot_mg_time = 0
             for i in range(0, len(shas), 100):
-                j = min(i + 10, len(shas))
+                j = min(i + 100, len(shas))
+                toget = shas[i:j]
                 get_start = time.time()
-                out = contents_db.multi_get(shas[i:j])
+                out = contents_db.multi_get(toget)
                 get_end = time.time()
                 tot_mg_time += get_end - get_start
             print(
@@ -92,11 +93,11 @@ if __name__ == "__main__":
     block_sizes = [
         4 * KiB,
         256 * KiB,
-        4 * MiB,
+        # 4 * MiB,
     ]
     compressions = [
         (aimrocks.CompressionType.no_compression, "nocomp"),
-        (aimrocks.CompressionType.zstd_compression, "zstd"),
+        (aimrocks.CompressionType.snappy_compression, "snappy"),
     ]
 
     # test put performance

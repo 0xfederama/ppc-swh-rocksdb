@@ -9,9 +9,9 @@ KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
 
-size = float("inf")  # float('inf') to take all the files
-size_str = "inf"
-minsize = 1 * MiB  # 0 to take files with all sizes
+size = 4 * MiB  # float('inf') to take all the files
+size_str = "4M"
+minsize = 0  # 0 to take files with all sizes
 minsize_str = "1M"
 
 parq_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
@@ -19,7 +19,7 @@ parq_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
 if __name__ == "__main__":
     print(f"Starting at {time.asctime()}, pid: {os.getpid()}")
     print(
-        f"Getting a subset of {size_str if size != float('inf') else 'inf'} from {parq_path} with min size {minsize_str}"
+        f"Getting a subset of {size_str if size != float('inf') else 'inf'} from {parq_path} with min size {minsize_str if minsize != 0 else '0'}"
     )
     start_time = time.time()
 
