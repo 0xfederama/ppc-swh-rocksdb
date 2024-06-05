@@ -179,7 +179,7 @@ def test(
     #####################
     # build the test db #
     #####################
-    start_insert = time.time()
+    tot_insert_time = 0
     index_len = len(str(len(metainfo_df)))
     batch_size = 10000
     ins_size = 0
@@ -196,16 +196,21 @@ def test(
         key = make_key(order, index_len, max_size, i, row)
         batch_write.put(str.encode(key), str.encode(content))
         if int(i) % batch_size == 0:
+            start_write = time.time()
             db_test.write(batch_write)
+            end_write = time.time()
+            tot_insert_time += end_write - start_write
             batch_write.clear()
     if batch_write.count() > 0:
+        start_write = time.time()
         db_test.write(batch_write)
+        end_write = time.time()
+        tot_insert_time += end_write - start_write
         batch_write.clear()
-    end_insert = time.time()
-    tot_insert_time = end_insert - start_insert
-    ins_throughput = round(ins_size / KiB / tot_insert_time, 3)
-    results["ins_thr"][bs_str][compr_str] = ins_throughput
-    print(f"{ins_throughput},", end="")
+    # compute throughput
+    ins_thr = round(ins_size / KiB / tot_insert_time, 3)
+    results["ins_thr"][bs_str][compr_str] = ins_thr
+    print(f"{ins_thr},", end="")
 
     #########################################
     # measure db size and compression ratio #
