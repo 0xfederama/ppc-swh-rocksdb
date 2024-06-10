@@ -5,10 +5,10 @@ import pandas as pd
 import time
 import os
 
-parq_size = "small_4096M"  # small_5rec, small_1M, small_8M, small_64M, small_256M, small_850M, small_4096M, small_10G, small_200G, dedup_v1
-small_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
-full_parq_path = "/disk2/data/the-stack/the-stack-" + parq_size + ".parquet"
-parquet_path = small_parq_path if parq_size != "dedup_v1" else full_parq_path
+parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+small_parq_path = "/disk2/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
+full_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
+parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
 blobs_path = f"/disk2/federico/blobs/{parq_size}"
 
 KiB = 1024
@@ -26,7 +26,7 @@ if __name__ == "__main__":
             print(f"Blobs directory {blobs_path} must be empty or non existent")
             exit()
 
-    pf = ParquetFile(parquet_path)
+    pf = ParquetFile(parq_path)
     start = time.time()
     rows = []  # list of dictionary rows
     for batch in pf.iter_batches(
