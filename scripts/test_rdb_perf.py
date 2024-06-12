@@ -7,9 +7,9 @@ import aimrocks
 import time
 import os
 
-test_get = False
-test_put = True
-parquet_path = "/disk2/federico/the-stack/the-stack-4G.parquet"
+test_get = True
+test_put = False
+parquet_path = "/disk2/federico/the-stack/small/the-stack-10G.parquet"
 content_db_paths = [
     # "/disk2/federico/the-stack/rocksdb-sha_content-zstd-4Mblock"
     # "/disk2/federico/the-stack/rocksdb-sha_content-zstd-noblock",
