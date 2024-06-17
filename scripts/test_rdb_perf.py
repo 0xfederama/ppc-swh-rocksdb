@@ -9,7 +9,7 @@ import os
 
 test_get = True
 test_put = False
-parquet_path = "/disk2/federico/the-stack/small/the-stack-10G.parquet"
+parquet_path = "/disk2/federico/the-stack/small/the-stack-8M.parquet"
 content_db_paths = [
     # "/disk2/federico/the-stack/rocksdb-sha_content-zstd-4Mblock"
     # "/disk2/federico/the-stack/rocksdb-sha_content-zstd-noblock",
@@ -34,6 +34,7 @@ test_db_dir = "/disk2/federico/db/tmp"
 
 KiB = 1024
 MiB = 1024 * 1024
+GiB = 1024 * 1024 * 1024
 
 if __name__ == "__main__":
     print(f"Starting at {time.asctime()}, pid: {os.getpid()}\n")
@@ -49,10 +50,19 @@ if __name__ == "__main__":
     if test_get:
         print(f"GET test, reading {len(df)} records taken from {parquet_path}")
         print(
-            "CONTENT_DB,SINGLE_TIME/GET(s),SG_THROUGHPUT(MiB/s),MULTI_TIME/GET(s),MG_THROUGHPUT(MiB/s)"
+            "CONTENT_DB,SIZE(GiB),SINGLE_TIME/GET(s),SG_THROUGHPUT(MiB/s),MULTI_TIME/GET(s),MG_THROUGHPUT(MiB/s)"
         )
         for content_db_path in content_db_paths:
-            print(f"{content_db_path.split('/')[-1]},", end="")
+            print(f"{content_db_path.split('/')[-1]},", end="", flush=True)
+            # get db size
+            tot_db_size = 0
+            for dirpath, _, filenames in os.walk(content_db_path):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    if not os.path.islink(fp):
+                        fsize = os.path.getsize(fp)
+                        tot_db_size += fsize
+            print(f"{round(tot_db_size / GiB, 2)},", end="", flush=True)
             opts = aimrocks.Options()
             opts.max_open_files = 40000
             opts.create_if_missing = False
@@ -76,42 +86,48 @@ if __name__ == "__main__":
             print(
                 f"{round(tot_sg_time/len(df), 5)},{round(total_get_size_mb / tot_sg_time, 3)},",
                 end="",
+                flush=True,
             )
             # test multi-gets in chunks of 100
             tot_mg_time = 0
-            for i in range(0, len(shas), 100):
-                j = min(i + 100, len(shas))
+            for i in range(0, len(shas), 1000):
+                j = min(i + 1000, len(shas))
                 toget = shas[i:j]
                 get_start = time.time()
                 out = contents_db.multi_get(toget)
                 get_end = time.time()
                 tot_mg_time += get_end - get_start
             print(
-                f"{round(tot_mg_time/len(df), 5)},{round(total_get_size_mb / tot_mg_time, 3)}"
+                f"{round(tot_mg_time/len(df), 5)},{round(total_get_size_mb / tot_mg_time, 3)}",
+                flush=True,
             )
 
     block_sizes = [
         4 * KiB,
         256 * KiB,
-        # 4 * MiB,
+        4 * MiB,
     ]
     compressions = [
         (aimrocks.CompressionType.no_compression, "nocomp"),
         (aimrocks.CompressionType.snappy_compression, "snappy"),
+        (aimrocks.CompressionType.zstd_compression, "zstd"),
+        (aimrocks.CompressionType.zlib_compression, "zlib"),
     ]
 
     # test put performance
     if test_put:
-        print(f"\nPUT test, creating DBs in {test_db_dir}\n")
         print(
-            "BLOCK_SIZE(KiB),COMPRESSION,TOT_PUT_SIZE(KiB),TOT_PUT_TIME(s),AVG_PUT_TIME(s),PERFORMANCE(KiB/s)"
+            f"PUT test, reading {len(df)} records taken from {parquet_path}, DBs in {test_db_dir}"
+        )
+        print(
+            "BLOCK_SIZE(KiB),COMPRESSION,TOT_PUT_SIZE(MiB),TOT_PUT_TIME(s),AVG_PUT_TIME(s),THROUGHPUT(MiB/s)"
         )
         for block_size in block_sizes:
             for compression in compressions:
                 print(f"{block_size / KiB},", end="")
                 compr = compression[0]
                 compr_str = compression[1]
-                print(f"{compr_str},", end="")
+                print(f"{compr_str},", end="", flush=True)
 
                 # create the test_db
                 test_db_path = f"{test_db_dir}/perf_test_{compr_str}_{str(time.time())}"
@@ -147,10 +163,14 @@ if __name__ == "__main__":
                 test_db.write(batch_write)
                 put_end = time.time()
                 tot_put_time += put_end - put_start
-                tot_put_size_kb = round(tot_put_size / KiB)
-                print(f"{tot_put_size_kb},{round(tot_put_time, 3)},", end="")
-                print(f"{round(tot_put_time/len(df), 5)},", end="")
-                print(f"{round(tot_put_size_kb/tot_put_time, 3)}")
+                tot_put_size_mb = tot_put_size / MiB
+                print(
+                    f"{round(tot_put_size_mb)},{round(tot_put_time, 3)},",
+                    end="",
+                    flush=True,
+                )
+                print(f"{round(tot_put_time/len(df), 5)},", end="", flush=True)
+                print(f"{round(tot_put_size_mb/tot_put_time, 3)}", flush=True)
 
                 # delete the test_db
                 del test_db

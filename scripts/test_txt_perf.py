@@ -12,21 +12,23 @@ KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
 
-txt_size = float("inf")
+txt_size = 10 * GiB
 txt_size_str = "10G"
-get_calls = 1000000  # number of "get" calls to be done on the txt file
+get_calls = 10000  # number of "get" calls to be done on the txt file
 
 parquet_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
 
 if __name__ == "__main__":
+    print(f"Starting at {time.asctime()}")
+
     # build and write to file
     txt_cont_path = (
-        f"/disk2/federico/the-stack/other_formats/the-stack-{txt_size_str}.txt"
+        f"/disk2/federico/the-stack/other_formats/the-stack-{txt_size_str}-contents.txt"
     )
     if not os.path.exists(txt_cont_path):
         print(f"Building the file {txt_size_str}")
-        start_put = time.time()
         sha_sizes = {}  # made of { sha: (start_index, size) }
+        tot_put_time = 0
         with open(txt_cont_path, "a") as f:
             tot_size = 0
             pf = ParquetFile(parquet_path)
@@ -37,7 +39,10 @@ if __name__ == "__main__":
                     size = int(str(batch["size"][i]))
                     sha_sizes[sha] = (tot_size, size)
                     tot_size += size
+                    start_put = time.time()
                     f.write(content)
+                    end_put = time.time()
+                    tot_put_time += end_put - start_put
                     if tot_size >= txt_size:
                         break
                 if tot_size >= txt_size:
@@ -47,9 +52,9 @@ if __name__ == "__main__":
         )
         with open(txt_cont_index, "w") as f:
             f.write(json.dumps(sha_sizes, indent=4))
-        end_put = time.time()
-        tot_put_time = end_put - start_put
-        print(f"  It took {round(tot_put_time)} s")
+        print(
+            f"Total time to write {round(tot_put_time, 3)} s, {round((tot_size / MiB) / tot_put_time, 3)} MiB/s"
+        )
     else:
         print(f"File {txt_size_str} already exists")
         txt_cont_index = (
@@ -57,6 +62,8 @@ if __name__ == "__main__":
         )
         with open(txt_cont_index, "r") as f:
             sha_sizes = json.load(f)
+
+    print(f"Half-time {time.asctime()}")
 
     # test get with mmap
     tot_get_time = 0
@@ -79,7 +86,8 @@ if __name__ == "__main__":
                 tot_get_time += end_get - start_get
                 tot_get_size += length
 
-    print("GET test:")
-    print(f"  Total time: {round(tot_get_time, 3)} s")
-    print(f"  Time per get: {tot_get_time / len(shas)} s")
-    print(f"  Throughput: {round((tot_get_size / MiB) / tot_get_time, 3)} MiB/s")
+    print(f"Total time: {round(tot_get_time, 3)} s")
+    print(f"Time per get: {tot_get_time / len(shas)} s")
+    print(f"Throughput: {round((tot_get_size / MiB) / tot_get_time, 3)} MiB/s")
+
+    print(f"Ending at {time.asctime()}")
