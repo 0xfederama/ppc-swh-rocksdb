@@ -19,15 +19,16 @@ querylog = False
 The parquet file is the file for which the db_test is created (storing index and content).
 The db_contents is already created, and it is static, with only sha and content.
 """
-parq_size = "1G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
-small_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
-full_parq_path = "/disk2/data/the-stack/the-stack-" + parq_size + ".parquet"
-parq_path = small_parq_path if parq_size != "dedup_v1" else full_parq_path
+parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+small_parq_path = "/disk2/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
+full_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
+parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
 parq_size_b = round(os.stat(parq_path).st_size)
 
-txt_contents_path = "/disk2/federico/the-stack/the-stack-dedup_v1.txt"
-txt_index_path = "/disk2/federico/the-stack/the-stack-dedup_v1-index.json"
-tmp_db_path = "/disk2/federico/db/tmp/"
+txt_contents_path = "/disk2/federico/the-stack/the-stack-dedup_v1-contents.txt"
+txt_index_path = "/disk2/federico/the-stack/the-stack-dedup_v1-contents-index.json"
+# tmp_db_path = "/disk2/federico/db/tmp/"
+tmp_db_path = "/nvme/f.ramacciotti/tmp/"
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -194,7 +195,7 @@ def test(
         txt_mmap.seek(start)
         content = txt_mmap.read(length)
         key = make_key(order, index_len, max_size, i, row)
-        batch_write.put(str.encode(key), str.encode(content))
+        batch_write.put(str.encode(key), content)
         if int(i) % batch_size == 0:
             start_write = time.time()
             db_test.write(batch_write)
@@ -208,23 +209,30 @@ def test(
         tot_insert_time += end_write - start_write
         batch_write.clear()
     # compute throughput
-    ins_thr = round(ins_size / KiB / tot_insert_time, 3)
+    ins_thr = round(ins_size / MiB / tot_insert_time, 2)
     results["ins_thr"][bs_str][compr_str] = ins_thr
     print(f"{ins_thr},", end="")
 
     #########################################
     # measure db size and compression ratio #
     #########################################
-    total_db_size = 0
+    tot_db_size = 0
+    tot_sst_size = 0
+    tot_sst_files = 0
     for dirpath, _, filenames in os.walk(db_test_path):
         for f in filenames:
             fp = os.path.join(dirpath, f)
             if not os.path.islink(fp):
-                total_db_size += os.path.getsize(fp)
-    compression_ratio = round((total_db_size * 100) / parq_size_b, 3)
-    total_db_size_gb = round(total_db_size / GiB, 3)
+                fsize = os.path.getsize(fp)
+                tot_db_size += fsize
+                if f.endswith(".sst"):
+                    tot_sst_size += fsize
+                    tot_sst_files += 1
+    compression_ratio = round((tot_db_size * 100) / parq_size_b, 2)
+    total_db_size_gb = round(tot_db_size / GiB, 2)
+    avg_sst_size_mb = round((tot_sst_size / MiB) / tot_sst_files, 2)
     results["compr_ratio"][bs_str][compr_str] = compression_ratio
-    print(f"{compression_ratio},{total_db_size_gb},", end="")
+    print(f"{compression_ratio},{total_db_size_gb},{avg_sst_size_mb},", end="")
 
     ########################
     # measure access times #
@@ -274,16 +282,18 @@ def test(
     if found_sg != len(queries):
         print(f"\nERROR: found {found_sg} out of {len(queries)} queries")
     if not (found_sg == found_mg):
-        print(f"ERROR: found numbers differ: {found_sg}, {found_mg}")
+        print(f"\nERROR: found numbers differ: {found_sg}, {found_mg}")
     # compute times
     sg_thr = (got_size / MiB) / tot_sg_time
     mg_thr = (got_size / MiB) / tot_mg_time
-    results["sg_thr"][bs_str][compr_str] = round(sg_thr, 3)
-    results["mg_thr"][bs_str][compr_str] = round(mg_thr, 3)
-    print(f"{round(sg_thr, 3)},{round(mg_thr, 3)}")
+    results["sg_thr"][bs_str][compr_str] = round(sg_thr, 2)
+    results["mg_thr"][bs_str][compr_str] = round(mg_thr, 2)
+    print(f"{round(sg_thr, 2)},{round(mg_thr, 2)}")
     # print the query log to file
     if querylog:
-        with open(f"query_log-{PID}/{compr_str}_{bs_str}_{order}_{lsh}.json", "w") as f:
+        with open(
+            f"query_log-{parq_size}-{PID}/{compr_str}_{bs_str}_{order}_{lsh}.json", "w"
+        ) as f:
             f.write(json.dumps(query_log, indent=4))
 
     #################
@@ -318,6 +328,7 @@ if __name__ == "__main__":
     block_sizes = [
         4 * KiB,
         8 * KiB,
+        32 * KiB,
         64 * KiB,
         128 * KiB,
         256 * KiB,
@@ -380,12 +391,12 @@ if __name__ == "__main__":
 
     # print header
     print(
-        "BLOCK_SIZE(KiB),COMPRESSION,ORDER,INSERT_THROUGHPUT(KiB/s),COMPRESSION_RATIO(%),TOT_SIZE(GiB),SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
+        "BLOCK_SIZE(KiB),COMPRESSION,ORDER,INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),TOT_SIZE(GiB),AVG_SST_FILE_SIZE(MiB),SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
     )
 
     # create query log directory
     if querylog:
-        os.makedirs(f"query_log-{PID}")
+        os.makedirs(f"query_log-{parq_size}-{PID}")
 
     # setup histogram results dictionary
     for m in metrics:
@@ -404,9 +415,9 @@ if __name__ == "__main__":
         for compr in compressors:
             test_orders = orders
             test_fingerprints = ["no_lsh"]
-            if compr[0] == aimrocks.CompressionType.no_compression:
-                # without compression the order and the lsh are useless
-                test_orders = ["parquet"]
+            # if compr[0] == aimrocks.CompressionType.no_compression:
+            #     # without compression the order and the lsh are useless
+            #     test_orders = ["parquet"]
             for order in test_orders:
                 if order == "fingerprint":
                     test_fingerprints = fingerprints
@@ -424,7 +435,7 @@ if __name__ == "__main__":
     print()
 
     # create histograms for the results
-    charts_dir = f"charts_benchmark-{PID}"
+    charts_dir = f"charts_benchmark-{parq_size}-{PID}"
     os.makedirs(charts_dir)
     for m in metrics:
         x = np.arange(len(x_compr))
@@ -439,9 +450,11 @@ if __name__ == "__main__":
             # ax.bar_label(barlabel, padding=3)
             multiplier += 1
         ax.set_xlabel("Compressors")
+        legend_loc = "upper left"
         match m:
             case "compr_ratio":
                 ax.set_ylabel("Compression ratio (%)")
+                legend_loc = "upper right"
             case "ins_thr":
                 ax.set_ylabel("Insertion throughput (MiB/s)")
             case "sg_thr":
@@ -449,7 +462,7 @@ if __name__ == "__main__":
             case "mg_thr":
                 ax.set_ylabel("Multi get throughput (MiB/s)")
         ax.set_xticks(x + width, x_compr)
-        ax.legend(title="Block sizes", alignment="left", loc="upper left")
+        ax.legend(title="Block sizes", alignment="left", loc=legend_loc)
         plt.savefig(f"{charts_dir}/{m}.png", format="png", bbox_inches="tight", dpi=120)
         plt.close()
         print(f"Graph {m} created")
