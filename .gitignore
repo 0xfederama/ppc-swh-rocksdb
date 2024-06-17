@@ -1,10 +1,10 @@
 # Ignore query log directories
-query_log-*
+# query_log-*
 
 # Ignore all .out files (like nohup.out) and csv files
-out
-*.out
-*.csv
+# out
+# *.out
+# *.csv
 
 # Ignore util.md
 util.md

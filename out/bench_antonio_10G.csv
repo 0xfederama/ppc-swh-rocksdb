@@ -1,0 +1,41 @@
+nohup: ignoring input
+Start: 2024-06-10 14:11:52
+Machine: r740xd-4
+User: f.ramacciotti
+Taking files from /disk2/federico/blobs/10G/
+Saving archives to /disk2/federico/blobs/tmp/
+PID 1269065
+
+DATASET,NUM_BLOBS,TOTAL_SIZE(GiB),AVG_BLOB_SIZE(KiB),MEDIAN_BLOB_SIZE(KiB),TECHNIQUE,COMPRESSION_RATIO(%),ORDERING_TIME(s),COMPRESSION_TIME(s),COMPRESSION_SPEED(MiB/s),FULL_DECOMPRESSION_SPEED(MiB/s),TIME_BLOB_DECOMPRESSION(ms),THROUGHPUT(blobs/s),COMMIT_HASH(021c951),NOTES
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_3,25.1,9.56,4991.25,2.05,8.08,1.44,1938.03,021c951,block_size=4KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_3,24.27,9.56,3429.96,2.98,9.47,1.86,2271.03,021c951,block_size=8KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_3,22.77,9.56,1603.44,6.35,10.24,4.62,2455.52,021c951,block_size=32KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_3,22.11,9.56,1126.51,9.01,11.77,7.09,2822.57,021c951,block_size=64KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_3,21.54,9.56,878.88,11.53,12.19,12.46,2924.96,021c951,block_size=128KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_3,21.02,9.56,804.32,12.58,12.16,23.26,2915.67,021c951,block_size=256KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_12,22.92,11.57,3963.21,2.58,7.79,1.49,1867.48,021c951,block_size=4KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_12,21.86,11.57,2433.69,4.19,9.11,1.92,2184.88,021c951,block_size=8KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_12,19.92,11.57,1247.72,8.13,10.8,4.37,2591.23,021c951,block_size=32KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_12,19.1,11.57,961.39,10.52,12.11,6.87,2903.75,021c951,block_size=64KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_12,18.4,11.57,821.71,12.29,11.91,12.73,2858.01,021c951,block_size=128KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_12,17.81,11.57,777.68,12.97,11.89,23.73,2852.33,021c951,block_size=256KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_22,22.28,9.82,37992.02,0.27,7.97,1.46,1910.88,021c951,block_size=4Ki
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_22,21.39,9.82,25312.47,0.4,9.47,1.85,2272.15,021c951,block_size=8KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_22,19.68,9.82,9648.5,1.06,10.88,4.35,2610.5,021c951,block_size=32KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_22,18.88,9.82,5771.78,1.77,11.73,7.11,2814.8,021c951,block_size=64KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_22,18.15,9.82,3371.32,3.03,12.03,12.63,2885.01,021c951,block_size=128KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+zstd_22,17.46,9.82,2012.06,5.06,12.65,22.35,3033.36,021c951,block_size=256KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_6,23.54,11.27,3841.58,2.66,8.19,1.41,1965.63,021c951,block_size=4KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_6,22.54,11.27,2180.94,4.67,9.2,1.9,2207.78,021c951,block_size=8KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_6,20.67,11.27,1110.63,9.13,10.64,4.43,2552.07,021c951,block_size=32KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_6,20.11,11.27,877.03,11.53,11.69,7.12,2804.03,021c951,block_size=64KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_6,19.8,11.27,763.66,13.21,11.74,12.92,2814.91,021c951,block_size=128KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_6,19.63,11.27,721.29,13.98,12.44,22.69,2984.17,021c951,block_size=256KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_9,23.71,10.37,3777.42,2.7,8.24,1.42,1975.49,154d5cd,block_size=4KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_9,22.9,10.37,2199.81,4.63,9.06,1.94,2174.39,154d5cd,block_size=8KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_9,21.28,10.37,1112.4,9.12,10.82,4.37,2595.72,154d5cd,block_size=32KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_9,20.79,10.37,874.99,11.57,11.64,7.17,2791.89,154d5cd,block_size=64KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_9,20.52,10.37,763.67,13.23,11.99,12.67,2875.24,154d5cd,block_size=128KiB
+10G_list_of_files,2456278,10.0,4.27,1.22,filename_sort+gzip_9,20.38,10.37,717.61,14.07,12.23,23.1,2934.7,154d5cd,block_size=256KiB
+
+# Ending time :  2024-06-12 17:14:43

@@ -1,0 +1,3 @@
+nohup: ignoring input
+Starting at Mon Jun 17 14:31:57 2024, pid: 465591
+Getting a subset of inf from /disk2/data/the-stack/the-stack-dedup_v1.parquet with min size 0, languages ['Python']

@@ -1,0 +1,46 @@
+nohup: ignoring input
+Starting at Mon Jun  3 20:57:09 2024, pid: 826949
+Parquet: /disk2/data/the-stack/the-stack-dedup_v1.parquet
+
+Total size: 2099.033 GiB
+Max file size: 98.51 MiB, language JSON
+Average file size: 9.3 KiB
+Number of files: 236655813
+Outliers > 32 KiB: 10024178 (4.236 %), 1448545.402 MiB (67.393 %)
+Outliers > 64 KiB: 5634764 (2.381 %), 1258180.302 MiB (58.536 %)
+Outliers > 128 KiB: 3149329 (1.331 %), 1040379.407 MiB (48.403 %)
+Outliers > 256 KiB: 1547512 (0.654 %), 761603.055 MiB (35.433 %)
+Outliers > 512 KiB: 609280 (0.257 %), 430316.079 MiB (20.02 %)
+Outliers > 1 MiB: 383 (0.00016 %), 2164.911 MiB (0.101 %)
+
+Graph files created
+Graph files_log_log_1M created
+Graph sizes created
+Graph sizes_sum created
+
+Top 20 languages:
+JSON: 17012912 files, 315.1 GiB, 19.421 KiB avg size, 98.51 MiB max size
+CSV: 6404239 files, 287.311 GiB, 47.042 KiB avg size, 48.552 MiB max size
+Text: 15267582 files, 227.463 GiB, 15.622 KiB avg size, 35.864 MiB max size
+Jupyter Notebook: 1073534 files, 144.332 GiB, 140.976 KiB avg size, 28.079 MiB max size
+HTML: 9533367 files, 136.678 GiB, 15.033 KiB avg size, 34.142 MiB max size
+JavaScript: 21108587 files, 131.919 GiB, 6.553 KiB avg size, 11.459 MiB max size
+XML: 6267525 files, 103.675 GiB, 17.345 KiB avg size, 45.341 MiB max size
+Java: 20151565 files, 83.164 GiB, 4.327 KiB avg size, 1.0 MiB max size
+SVG: 3267524 files, 70.275 GiB, 22.552 KiB avg size, 1.415 MiB max size
+Markdown: 21045171 files, 70.078 GiB, 3.492 KiB avg size, 2.252 MiB max size
+PHP: 15904518 files, 62.254 GiB, 4.104 KiB avg size, 1.0 MiB max size
+Python: 12962249 files, 59.888 GiB, 4.845 KiB avg size, 1.969 MiB max size
+C: 8625559 files, 53.484 GiB, 6.502 KiB avg size, 29.353 MiB max size
+C++: 6377914 files, 47.396 GiB, 7.792 KiB avg size, 10.827 MiB max size
+C#: 10839399 files, 43.107 GiB, 4.17 KiB avg size, 1.0 MiB max size
+TypeScript: 10637070 files, 26.836 GiB, 2.645 KiB avg size, 0.998 MiB max size
+YAML: 5282081 files, 26.416 GiB, 5.244 KiB avg size, 5.882 MiB max size
+Go: 4730461 files, 23.971 GiB, 5.313 KiB avg size, 1.0 MiB max size
+CSS: 2994829 files, 21.06 GiB, 7.374 KiB avg size, 1.0 MiB max size
+SQL: 994019 files, 11.38 GiB, 12.005 KiB avg size, 5.757 MiB max size
+
+Graph lang_boxplot_small created
+Graph lang_boxplot_big created
+
+Ending at Mon Jun  3 21:22:37 2024
