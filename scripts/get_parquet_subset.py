@@ -6,11 +6,11 @@ import pandas as pd
 from pyarrow.parquet import ParquetFile
 
 size = float("inf")  # float('inf') to take all the files
-size_str = "4M"  # automatically the ending size if size is inf
+size_str = ""  # automatically the ending size if size is inf
 minsize = 0  # 0 to take files with all sizes
-minsize_str = "_minsize_" + "1M"  # change only the second string
-languages = ["Python"]  # [] to take all languages
-lang_str = "-" + "py"  # change only the second string
+minsize_str = "1M"
+languages = ["C", "C++"]  # [] to take all languages
+lang_str = "cc"
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -51,15 +51,16 @@ if __name__ == "__main__":
     if size == float("inf"):
         size_str = str(round(tot_size / GiB)) + "G"
 
-    lang_str = ""
     output_path = "/disk2/federico/the-stack"
     if languages != []:
         output_path += "/langs"
+        lang_str = "-" + lang_str
     else:
         lang_str = ""
     if minsize == 0:
         output_path += f"/the-stack-{size_str}{lang_str}.parquet"
     else:
+        minsize_str = "_minsize_" + minsize_str
         output_path += f"/the-stack-{size_str}{minsize_str}{lang_str}.parquet"
     df.to_parquet(output_path, compression=None)
 
