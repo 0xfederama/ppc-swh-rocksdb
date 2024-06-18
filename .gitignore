@@ -5,6 +5,7 @@
 # out
 # *.out
 # *.csv
+charts_benchmark*
 
 # Ignore util.md
 util.md
