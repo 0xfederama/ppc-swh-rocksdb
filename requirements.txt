@@ -9,3 +9,4 @@ simhash
 spookyhash
 aimrocks
 pyarrow
+python-snappy
