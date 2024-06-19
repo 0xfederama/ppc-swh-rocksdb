@@ -64,7 +64,7 @@ symbols = {"zstd": "v", "gzip": "x", "snappy": "$\\lambda$"}
 colors = {"4K": "blue", "8K": "orange", "32K": "green", "64K": "red"}
 
 # Create subplots
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.5, 3.75))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8.25, 4))
 
 
 # Function to extract the suffix and prefix for symbols and colors
