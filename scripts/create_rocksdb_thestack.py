@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from pyarrow.parquet import ParquetFile
 import aimrocks
 import time

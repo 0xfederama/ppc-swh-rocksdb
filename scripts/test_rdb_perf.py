@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import shutil
 from pyarrow.parquet import ParquetFile
 import pandas as pd
