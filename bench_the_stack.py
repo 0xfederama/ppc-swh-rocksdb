@@ -142,10 +142,14 @@ def sort_df(input_df: pd.DataFrame, order: str, lsh: str):
     return sorted_df
 
 
-def exec_cmd(cmd):
-    process = subprocess.run(cmd.split(), capture_output=True, text=True)
-    if process.returncode != 0:
-        print(f"ERROR: {process.stderr}, output {process.stdout}")
+def exec_cmd(cmd, redirect_file: None):
+    if redirect_file:
+        with open(redirect_file, "w") as outfile:
+            process = subprocess.run(cmd.split(), text=True, stdout=outfile)
+    else:
+        process = subprocess.run(cmd.split(), capture_output=True, text=True)
+        if process.returncode != 0:  # needed when we capture the output
+            print(f"ERROR: {process.stderr}")
 
 
 def test_backup(
@@ -210,15 +214,22 @@ def test_backup(
     if compr_str == "no":
         print("100,0,0,", end="")
     else:
-        start_compr = time.time()
-        exec_cmd(f"{compr_cmd} {test_contents_path_uncomp}")
-        end_compr = time.time()
-        tot_compr_time = end_compr - start_compr
+        compr_cmd_opt = compr_cmd
         if "zstd" in compr_str:
             compr_suffix = ".zst"
         elif "gzip" in compr_str:
             compr_suffix = ".gz"
+        elif "snappy" in compr_str:
+            compr_cmd_opt += " -c"
+            compr_suffix = ".snappy"
         test_contents_path_compr = test_contents_path_uncomp + compr_suffix
+        redirect = None
+        if "snappy" in compr_str:
+            redirect = test_contents_path_compr
+        start_compr = time.time()
+        exec_cmd(f"{compr_cmd_opt} {test_contents_path_uncomp}", redirect_file=redirect)
+        end_compr = time.time()
+        tot_compr_time = end_compr - start_compr
         # compute metrics
         compr_size_mb = os.stat(test_contents_path_compr).st_size / MiB
         compr_size_gb = round(os.stat(test_contents_path_compr).st_size / GiB, 2)
@@ -233,8 +244,11 @@ def test_backup(
         print("0")
     else:
         decompr_cmd = f"{compr_cmd} -d"
+        redirect = None
+        if "snappy" in compr_str:
+            redirect = test_contents_path_uncomp
         start_decompr = time.time()
-        exec_cmd(f"{decompr_cmd} {test_contents_path_compr}")
+        exec_cmd(f"{decompr_cmd} {test_contents_path_compr}", redirect_file=redirect)
         end_decompr = time.time()
         tot_decompr_time = end_decompr - start_decompr
         # compute throughput
@@ -593,12 +607,13 @@ if __name__ == "__main__":
             print(f"Graph {m} created")
     elif benchmark_mode == "backup":
         compressors = [
-            ("no", "no"),
-            ("zstd -3 --long=30 --adapt -f", "zstd-3"),
-            ("zstd -12 --adapt -f", "zstd-12"),
-            ("zstd --ultra -22 -M1024MB --long=30 --adapt -f", "zstd-22"),
-            ("gzip -6 -k -f", "gzip-6"),
-            ("gzip -9 -k -f", "gzip-9"),
+            # ("no", "no"),
+            # ("zstd -3 --long=30 --adapt -f", "zstd-3"),
+            # ("zstd -12 --adapt -f", "zstd-12"),
+            # ("zstd --ultra -22 -M1024MB --long=30 --adapt -f", "zstd-22"),
+            # ("gzip -6 -k -f", "gzip-6"),
+            # ("gzip -9 -k -f", "gzip-9"),
+            ("python3 -m snappy", "snappy"),
         ]
         for compr in compressors:
             test_orders = orders
