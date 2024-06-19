@@ -7,8 +7,9 @@ parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_mi
 small_parq_path = "/disk2/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
 parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
-parq_size = "60G-py"
-parq_path = "/disk2/federico/the-stack/langs/the-stack-" + parq_size + ".parquet"
+# uncomment the following lines to make script run on custom file
+# parq_size = "60G-py"
+# parq_path = "/disk2/federico/the-stack/langs/the-stack-" + parq_size + ".parquet"
 blobs_path = f"/disk2/federico/blobs/{parq_size}"
 
 KiB = 1024
