@@ -12,3 +12,19 @@ Ending at Sat May 18 12:25:56 2024
 nohup: ignoring input
 Starting at Mon Jun 10 12:01:58 2024, pid: 1130628
 Ending at Mon Jun 10 14:09:44 2024
+
+# 60G python
+nohup: ignoring input
+Starting at Wed Jun 19 16:12:12 2024, pid: 688069
+Creating a directory from parquet /disk2/federico/the-stack/langs/the-stack-60G-py.parquet in /disk2/federico/blobs/60G-py
+Created the directory with total size 59.89 GiB
+Files list created in /disk2/federico/blobs/60G-py_list_of_files.csv
+Ending at Thu Jun 20 04:07:39 2024
+
+# 83G java
+nohup: ignoring input
+Starting at Thu Jun 20 10:30:34 2024, pid: 753949
+Creating a directory from parquet /disk2/federico/the-stack/langs/the-stack-83G-java.parquet in /disk2/federico/blobs/83G-java
+Created the directory with total size 83.16 GiB
+Files list created in /disk2/federico/blobs/83G-java_list_of_files.csv
+Ending at Fri Jun 21 04:03:01 2024
