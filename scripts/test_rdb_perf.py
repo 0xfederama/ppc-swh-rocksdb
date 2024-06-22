@@ -50,6 +50,7 @@ if __name__ == "__main__":
         print(
             "CONTENT_DB,SIZE(GiB),SINGLE_TIME/GET(s),SG_THROUGHPUT(MiB/s),MULTI_TIME/GET(s),MG_THROUGHPUT(MiB/s)"
         )
+        nqueries = len(df)
         for content_db_path in content_db_paths:
             print(f"{content_db_path.split('/')[-1]},", end="", flush=True)
             # get db size
@@ -71,14 +72,16 @@ if __name__ == "__main__":
             tot_sg_time = 0
             tot_get_size = 0
             shas = []
+            found_sg = 0
             # test single gets
             for _, row in df.iterrows():
                 sha = str(row["hexsha"])
                 shas.append(str.encode(sha))
                 get_start = time.time()
-                content = contents_db.get(str.encode(sha))
+                got = contents_db.get(str.encode(sha))
                 get_end = time.time()
-                tot_get_size += len(content)
+                tot_get_size += len(got)
+                found_sg += sum(x is not None for x in [got])
                 tot_sg_time += get_end - get_start
             total_get_size_mb = tot_get_size / MiB
             print(
@@ -88,13 +91,23 @@ if __name__ == "__main__":
             )
             # test multi-gets in chunks of 100
             tot_mg_time = 0
+            found_mg = 0
+            tot_mg_toget = 0
             for i in range(0, len(shas), 1000):
                 j = min(i + 1000, len(shas))
                 toget = shas[i:j]
+                tot_mg_toget += len(toget)
                 get_start = time.time()
-                out = contents_db.multi_get(toget)
+                gotlist = contents_db.multi_get(toget)
                 get_end = time.time()
                 tot_mg_time += get_end - get_start
+                found_mg += sum(x is not None for x in gotlist)
+            if tot_mg_toget != nqueries:
+                print(f"\nERROR: total_mg_get is {tot_mg_toget} instead of {nqueries}")
+            if found_sg != nqueries:
+                print(f"\nERROR: found {found_sg} out of {nqueries} queries")
+            if not (found_sg == found_mg):
+                print(f"\nERROR: found numbers differ: {found_sg}, {found_mg}")
             print(
                 f"{round(tot_mg_time/len(df), 5)},{round(total_get_size_mb / tot_mg_time, 3)}",
                 flush=True,
