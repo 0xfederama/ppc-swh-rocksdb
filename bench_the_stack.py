@@ -150,7 +150,7 @@ def exec_cmd(cmd, redirect_file: None):
 
 
 def test_backup(
-    txt_mmap: mmap,
+    txt_mmap: mmap.mmap,
     txt_index: dict[str, dict],
     metainfo_df: pd.DataFrame,
     compressor: tuple[str, str],
@@ -181,7 +181,7 @@ def test_backup(
     #######################
     tot_ins_time = 0
     # for each row in df, get from txt_contents and append to test file
-    with open(test_contents_path_uncomp, "a") as f:
+    with open(test_contents_path_uncomp, "ab") as f:
         for _, row in sorted_df.iterrows():
             sha = str(row["hexsha"])
             coords = txt_index[sha]
@@ -191,7 +191,7 @@ def test_backup(
             content = txt_mmap.read(length)
             start_ins = time.time()
             try:
-                f.write(content.decode(errors="ignore"))
+                f.write(content)
             except Exception as e:
                 print(e)
                 print(
