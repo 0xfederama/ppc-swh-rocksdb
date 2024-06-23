@@ -14,7 +14,7 @@ import tlsh
 
 querylog = False
 benchmark_mode = (
-    "backup"  # "backup" (output to single file) or "random access" (output to rocksdb)
+    "access"  # "backup" (output to single file) or "access" (output to rocksdb)
 )
 
 """
@@ -29,8 +29,7 @@ parq_size_b = round(os.stat(parq_path).st_size)
 
 txt_contents_path = "/disk2/federico/the-stack/the-stack-dedup_v1-contents.txt"
 txt_index_path = "/disk2/federico/the-stack/the-stack-dedup_v1-contents-index.json"
-# tmp_test_path = "/disk2/federico/db/tmp/"
-tmp_test_path = "/nvme/f.ramacciotti/tmp/"
+tmp_test_path = "/disk2/federico/db/tmp/"
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -61,7 +60,7 @@ def create_fingerprints(content: str, fingerprints: list[str]) -> dict[str, str]
     return out
 
 
-def make_key(order, index_len, max_size, i, row):
+def make_key(order, index_len, max_size, i, row, lsh):
     key = ""
     sha = str(row["hexsha"])
     match order:
@@ -323,7 +322,7 @@ def test_rocksdb(
         length = coords[1]
         txt_mmap.seek(start)
         content = txt_mmap.read(length)
-        key = make_key(order, index_len, max_size, i, row)
+        key = make_key(order, index_len, max_size, i, row, lsh)
         batch_write.put(str.encode(key), content)
         if int(i) % batch_size == 0 or (
             i == len(sorted_df) - 1 and batch_write.count() > 0  # last iteration
@@ -364,7 +363,7 @@ def test_rocksdb(
     ########################
     # measure access times #
     ########################
-    n_queries = 250  # 0: query entire db, X: make X queries
+    n_queries = 2500  # 0: query entire db, X: make X queries
     if n_queries == 0 or n_queries > len(metainfo_df):
         n_queries = len(metainfo_df)
     queries = list(np.random.permutation(len(metainfo_df))[:n_queries])
@@ -379,7 +378,7 @@ def test_rocksdb(
     index_len = len(str(len(metainfo_df)))
     for i, row in metainfo_df.iterrows():
         if int(i) in queries:
-            key = make_key(order, index_len, max_size, i, row)
+            key = make_key(order, index_len, max_size, i, row, lsh)
             query_log.append(str(key))
             keys_mget.append(str.encode(key))
             # test single get
@@ -391,7 +390,7 @@ def test_rocksdb(
             found_sg += sum(x is not None for x in [got])
             ind_query += 1
         # test multi get
-        if ind_query % 100 == 0 or (i == len(metainfo_df) - 1 and len(keys_mget) > 0):
+        if ind_query % 1000 == 0 or (i == len(metainfo_df) - 1 and len(keys_mget) > 0):
             start_mg_time = time.time()
             gotlist = db_test.multi_get(keys_mget)
             end_mg_time = time.time()
@@ -491,17 +490,10 @@ if __name__ == "__main__":
         f"Reading parquet and computing fingerprints: {round(end_reading - start_reading)} s\n"
     )
 
-    # print header
-    if benchmark_mode == "backup":
-        print(
-            "COMPRESSION,ORDER,INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),TOT_COMPR_SIZE(GiB),COMPRESSION_SPEED(MiB/s),DECOMPRESSION_SPEED(MiB/S)"
-        )
-    elif benchmark_mode == "random access":
+    if benchmark_mode == "access":
         print(
             "BLOCK_SIZE(KiB),COMPRESSION,ORDER,INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),TOT_SIZE(GiB),AVG_SST_FILE_SIZE(MiB),SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
         )
-
-    if benchmark_mode == "random access":
         # define compressors and block sizes
         compressors = [
             (aimrocks.CompressionType.no_compression, 0),
@@ -514,11 +506,11 @@ if __name__ == "__main__":
         ]
         block_sizes = [
             4 * KiB,
-            8 * KiB,
-            32 * KiB,
+            # 8 * KiB,
+            # 32 * KiB,
             64 * KiB,
             # 128 * KiB,
-            # 256 * KiB,
+            256 * KiB,
             # 512 * KiB,
             # 1 * MiB,
             # 4 * MiB,
@@ -588,7 +580,7 @@ if __name__ == "__main__":
             match m:
                 case "compr_ratio":
                     ax.set_ylabel("Compression ratio (%)")
-                    plt.yticks(list(plt.yticks()[0]).append(100))
+                    plt.yticks(list(plt.yticks()[0]) + [100])  # TODO: check if it works
                     legend_loc = "upper right"
                 case "ins_thr":
                     ax.set_ylabel("Insertion throughput (MiB/s)")
@@ -604,13 +596,16 @@ if __name__ == "__main__":
             plt.close()
             print(f"Graph {m} created")
     elif benchmark_mode == "backup":
+        print(
+            "COMPRESSION,ORDER,INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),TOT_COMPR_SIZE(GiB),COMPRESSION_SPEED(MiB/s),DECOMPRESSION_SPEED(MiB/S)"
+        )
         compressors = [
-            # ("no", "no"),
-            # ("zstd -3 --long=30 --adapt -f", "zstd-3"),
-            # ("zstd -12 --adapt -f", "zstd-12"),
-            # ("zstd --ultra -22 -M1024MB --long=30 --adapt -f", "zstd-22"),
-            # ("gzip -6 -k -f", "gzip-6"),
-            # ("gzip -9 -k -f", "gzip-9"),
+            ("no", "no"),
+            ("zstd -3 -f", "zstd-3"),
+            ("zstd -12 -f", "zstd-12"),
+            ("zstd --ultra -22 -M1024MB --long=30 --adapt -f", "zstd-22"),
+            ("gzip -6 -k -f", "gzip-6"),
+            ("gzip -9 -k -f", "gzip-9"),
             ("python3 -m snappy", "snappy"),
         ]
         for compr in compressors:
