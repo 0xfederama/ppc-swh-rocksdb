@@ -140,9 +140,7 @@ def test_backup(
     #######################
     test_contents_path_uncomp = f"{test_filename}.txt"
     test_index_path_uncomp = f"{test_filename}-index.txt"
-    metadata_csv_path_uncomp = (
-        f"{tmp_test_path}metadata_{parq_size}_{compr_str}_{int(time.time())}.csv"
-    )
+    metadata_csv_path_uncomp = f"{test_filename}-metadata.csv"
     start_index = 0
     # for each row in df, get from txt_contents and append to test file
     with open(test_index_path_uncomp, "a") as f_index:
@@ -233,17 +231,17 @@ def test_backup(
     ####################
     # delete the files #
     ####################
-    # del sorted_df
-    # for file in [
-    #     test_contents_path_uncomp,
-    #     test_index_path_uncomp,
-    #     metadata_csv_path_uncomp,
-    # ]:
-    #     if os.path.exists(file):
-    #         os.remove(file)
-    #     if compr_str != "no":
-    #         if os.path.exists(file + compr_suffix):
-    #             os.remove(file + compr_suffix)
+    del sorted_df
+    for file in [
+        test_contents_path_uncomp,
+        test_index_path_uncomp,
+        metadata_csv_path_uncomp,
+    ]:
+        if os.path.exists(file):
+            os.remove(file)
+        if compr_str != "no":
+            if os.path.exists(file + compr_suffix):
+                os.remove(file + compr_suffix)
 
 
 if __name__ == "__main__":
