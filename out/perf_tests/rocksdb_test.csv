@@ -18,7 +18,7 @@ Ending at Sat Jun 22 18:11:55 2024
 
 nohup: ignoring input
 Starting at Sun Jun 23 13:45:50 2024, pid: 930948
-PUT test, reading 2456278 records taken from /disk2/federico/the-stack/small/the-stack-10G.parquet, DBs in /disk2/federico/db/rocksdb_perf_test/sha, ordered by sha
+PUT test, reading 2456278 records taken from /disk2/federico/the-stack/small/the-stack-10G.parquet, DBs in /disk2/federico/db/rocksdb_perf_test/sha/, ordered by sha
 BLOCK_SIZE(KiB),COMPRESSION,TOT_PUT_SIZE(MiB),TOT_PUT_TIME(s),AVG_PUT_TIME(s),THROUGHPUT(MiB/s)
 4.0,nocomp,10240,46.179,2e-05,221.747
 4.0,zstd,10240,193.661,8e-05,52.876

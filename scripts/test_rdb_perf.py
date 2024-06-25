@@ -138,7 +138,7 @@ def test_put():
             print(f"{compr_str},", end="", flush=True)
 
             # create the test_db
-            test_db_path = f"{dbs_path}db_{compr_str}_{int(block_size / KiB)}K"
+            test_db_path = f"{dbs_path}/db_{compr_str}_{int(block_size / KiB)}K"
             opts = aimrocks.Options()
             opts.create_if_missing = True
             opts.error_if_exists = True
