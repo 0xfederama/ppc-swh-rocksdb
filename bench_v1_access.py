@@ -12,16 +12,20 @@ import pyarrow.parquet as pq
 import tlsh
 
 querylog = False  # True to output queries to file, False to skip it
+make_charts = False  # True to create charts, False to skip it
+delete_db = True  # True to delete the test dbs, False to skip it
+n_queries = 500  # number of queries to make on the dbs to test their throughput
 
-parq_size = "8M"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
-small_parq_path = "/disk2/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
-full_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
+parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
+full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
 parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
+# parq_path = "/weka1/federico/the-stack/langs/the-stack-" + parq_size + ".parquet"
 parq_size_b = os.path.getsize(parq_path)
 
-txt_contents_path = "/disk2/federico/the-stack/the-stack-dedup_v1-contents.txt"
-txt_index_path = "/disk2/federico/the-stack/the-stack-dedup_v1-contents-index.json"
-tmp_test_path = "/disk2/federico/db/tmp/"
+txt_contents_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents.txt"
+txt_index_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents-index.json"
+tmp_test_path = "/weka1/federico/db/tmp/"
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -45,7 +49,10 @@ def create_fingerprints(content: str, fingerprints: list[str]) -> dict[str, str]
             case "tlsh":
                 if len(content) > 50:  # requested by tlsh algorithm
                     # first 8 bytes are metadata
-                    fingerprint = tlsh.hash(str.encode(content))[8:]
+                    try:
+                        fingerprint = tlsh.hash(str.encode(content))[8:]
+                    except Exception as e:
+                        print(f"ERROR IN CREATE_FINGERPRINTS: {e}")
             # case "min_hash":
             #     fingerprint = hash(content)
         out[lsh] = fingerprint
@@ -140,6 +147,7 @@ def test_rocksdb(
     block_size: int,
     lsh: str,
     max_size: int,
+    queries: list[int],
 ):
     ######################
     # create the test db #
@@ -154,10 +162,13 @@ def test_rocksdb(
     opts.allow_mmap_reads = True
     opts.paranoid_checks = False
     opts.use_adaptive_mutex = True
+    # options to try to make db smaller
+    # opts.compression_opts["max_dict_bytes"] = 1 * GiB
     # compression and block
     opts.compression = compr
     if level != 0:
         opts.compression_opts = {"level": level}
+        # opts.compression_opts["level"] = level
     opts.table_factory = aimrocks.BlockBasedTableFactory(block_size=block_size)
     db_test = aimrocks.DB(db_test_path, opts, read_only=False)
 
@@ -168,11 +179,14 @@ def test_rocksdb(
     ##################
     # sort if needed #
     ##################
+    sort_start = time.time()
     sorted_df = sort_df(metainfo_df, order, lsh)
+    sort_end = time.time()
+    sort_time = round(sort_end - sort_start)
     print_lsh = ""
     if order == "fingerprint":
         print_lsh = "-" + lsh
-    print(f"{order}{print_lsh},", end="")
+    print(f"{order}{print_lsh},{sort_time},", end="")
 
     #####################
     # build the test db #
@@ -215,27 +229,36 @@ def test_rocksdb(
     for dirpath, _, filenames in os.walk(db_test_path):
         for f in filenames:
             fp = os.path.join(dirpath, f)
-            if not os.path.islink(fp):
-                fsize = os.path.getsize(fp)
-                tot_db_size += fsize
-                if f.endswith(".sst"):
-                    tot_sst_size += fsize
-                    tot_sst_files += 1
+            try:
+                if not os.path.islink(fp):
+                    fsize = os.path.getsize(fp)
+                    tot_db_size += fsize
+                    if f.endswith(".sst"):
+                        tot_sst_size += fsize
+                        tot_sst_files += 1
+            except Exception as e:
+                print(e)
     compr_ratio = round((tot_db_size * 100) / parq_size_b, 2)
-    total_db_size_gb = round(tot_db_size / GiB, 2)
     avg_sst_size_mb = (
         round((tot_sst_size / MiB) / tot_sst_files, 2) if tot_sst_files != 0 else 0
     )
     results["compr_ratio"][bs_str][compr_str] = compr_ratio
-    print(f"{compr_ratio},{total_db_size_gb},{avg_sst_size_mb},", end="")
+    print(f"{compr_ratio},{avg_sst_size_mb},", end="")
+
+    ### TEST IF DB IS IN ORDER
+    ordered = True
+    it = db_test.iterkeys()
+    it.seek_to_first()
+    it = list(it)
+    for ind_iter in range(100):
+        if not (it[ind_iter] <= it[ind_iter + 1]):
+            print(f"\nERROR: {it[ind_iter]} not smaller than {it[ind_iter + 1]}")
+            ordered = False
+    print(f"{ordered},", end="")
 
     ########################
     # measure access times #
     ########################
-    n_queries = 2500  # 0: query entire db, X: make X queries
-    if n_queries == 0 or n_queries > len(metainfo_df):
-        n_queries = len(metainfo_df)
-    queries = list(np.random.permutation(len(metainfo_df))[:n_queries])
     query_log = []
     found_sg = 0
     found_mg = 0
@@ -244,6 +267,7 @@ def test_rocksdb(
     keys_mget = []
     tot_sg_time = 0
     tot_mg_time = 0
+    n_mget = 0
     index_len = len(str(len(metainfo_df)))
     for i, row in metainfo_df.iterrows():
         if int(i) in queries:
@@ -259,11 +283,13 @@ def test_rocksdb(
             found_sg += sum(x is not None for x in [got])
             ind_query += 1
         # test multi get
-        if ind_query % 1000 == 0 or (i == len(metainfo_df) - 1 and len(keys_mget) > 0):
+        if ind_query % 100 == 0 or (i == len(metainfo_df) - 1 and len(keys_mget) > 0):
             start_mg_time = time.time()
             gotlist = db_test.multi_get(keys_mget)
             end_mg_time = time.time()
             keys_mget.clear()
+            n_mget += 1
+            ind_query = 1
             tot_mg_time += end_mg_time - start_mg_time
             found_mg += sum(x is not None for x in gotlist)
     if found_sg != len(queries):
@@ -275,7 +301,7 @@ def test_rocksdb(
     mg_thr = (got_size / MiB) / tot_mg_time
     results["sg_thr"][bs_str][compr_str] = round(sg_thr, 2)
     results["mg_thr"][bs_str][compr_str] = round(mg_thr, 2)
-    print(f"{round(sg_thr, 2)},{round(mg_thr, 2)}")
+    print(f"{round(sg_thr, 2)},{round(mg_thr, 2)},{n_mget} #mget")
     # print the query log to file
     if querylog:
         with open(
@@ -288,8 +314,9 @@ def test_rocksdb(
     #################
     del db_test
     del sorted_df
-    if os.path.exists(db_test_path):
-        shutil.rmtree(db_test_path)
+    if delete_db:
+        if os.path.exists(db_test_path):
+            shutil.rmtree(db_test_path)
 
 
 if __name__ == "__main__":
@@ -314,6 +341,31 @@ if __name__ == "__main__":
         "tlsh",
         # "min_hash",
     ]
+    compressors = [
+        (aimrocks.CompressionType.no_compression, 0),
+        (aimrocks.CompressionType.zstd_compression, 3),
+        (aimrocks.CompressionType.zstd_compression, 12),
+        (aimrocks.CompressionType.zstd_compression, 22),
+        (aimrocks.CompressionType.zlib_compression, 6),
+        (aimrocks.CompressionType.zlib_compression, 9),
+        (aimrocks.CompressionType.snappy_compression, 0),
+    ]
+    block_sizes = [
+        4 * KiB,
+        # 8 * KiB,
+        32 * KiB,
+        # 64 * KiB,
+        128 * KiB,
+        256 * KiB,
+        # 512 * KiB,
+        # 1 * MiB,
+        # 4 * MiB,
+        # 10 * MiB,
+    ]
+    print(f"Orderings: {orders}, fingerprints: {fingerprints}")
+    print(f"Compressors: {[get_compr_str(c) for c in compressors]}")
+    print(f"Block sizes: {[get_bs_str(b) for b in block_sizes]}")
+    print()
 
     # open the contents txt with mmap and the index file
     txt_start = time.time()
@@ -337,12 +389,14 @@ if __name__ == "__main__":
             "size",
         ]
     ):
-        batch_df = batch.to_pandas()
-        # replace content with its fingerprint
-        batch_df["content"] = batch_df["content"].apply(
-            create_fingerprints, fingerprints=fingerprints
-        )
-        dataframes.append(batch_df)
+        try:
+            batch_df = batch.to_pandas()
+            # replace content with its fingerprint
+            # batch_df["content"] = "0"  # FIXME: test to see if memory overflows
+            batch_df["content"].apply(create_fingerprints, fingerprints=fingerprints)
+            dataframes.append(batch_df)
+        except Exception as e:
+            print(e)
     # concatenate the results and rename columns
     metainfo_df = pd.concat(dataframes, ignore_index=True)
     metainfo_df = metainfo_df.rename(
@@ -357,31 +411,6 @@ if __name__ == "__main__":
     print(
         f"Reading parquet and computing fingerprints: {round(end_reading - start_reading)} s\n"
     )
-    print(
-        "BLOCK_SIZE(KiB),COMPRESSION,ORDER,INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),TOT_SIZE(GiB),AVG_SST_FILE_SIZE(MiB),SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
-    )
-    # define compressors and block sizes
-    compressors = [
-        (aimrocks.CompressionType.no_compression, 0),
-        (aimrocks.CompressionType.zstd_compression, 3),
-        # (aimrocks.CompressionType.zstd_compression, 12),
-        # (aimrocks.CompressionType.zstd_compression, 22),
-        (aimrocks.CompressionType.zlib_compression, 6),
-        # (aimrocks.CompressionType.zlib_compression, 9),
-        (aimrocks.CompressionType.snappy_compression, 0),
-    ]
-    block_sizes = [
-        4 * KiB,
-        # 8 * KiB,
-        # 32 * KiB,
-        64 * KiB,
-        # 128 * KiB,
-        256 * KiB,
-        # 512 * KiB,
-        # 1 * MiB,
-        # 4 * MiB,
-        # 10 * MiB,
-    ]
 
     # setup histogram results dictionary
     for m in metrics:
@@ -400,6 +429,14 @@ if __name__ == "__main__":
     if querylog:
         os.makedirs(f"query_log-{parq_size}-{PID}")
 
+    # create queries list
+    if n_queries == 0 or n_queries > len(metainfo_df):
+        n_queries = len(metainfo_df)
+    queries = list(np.random.permutation(len(metainfo_df))[:n_queries])
+
+    print(
+        "BLOCK_SIZE(KiB),COMPRESSION,ORDER,SORTING_TIME(s),INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),AVG_SST_FILE_SIZE(MiB),DB_ORDERED,SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
+    )
     # run tests
     for block_size in block_sizes:
         for compr in compressors:
@@ -421,41 +458,48 @@ if __name__ == "__main__":
                         block_size=block_size,
                         lsh=lsh,
                         max_size=max_size,
+                        queries=queries,
                     )
     print()
 
     # create histograms for the results
-    charts_dir = f"charts_benchmark-{parq_size}-{PID}"
-    os.makedirs(charts_dir)
-    for m in metrics:
-        x = np.arange(len(x_compr))
-        width = 0.15
-        multiplier = -0.5
-        data = results[m]
-        fig, ax = plt.subplots(figsize=(9, 6))
-        stripped_results = {key: tuple(value.values()) for key, value in data.items()}
-        for size, value in stripped_results.items():
-            offset = width * multiplier
-            barlabel = ax.bar(x + offset, value, width, label=size)
-            # ax.bar_label(barlabel, padding=3)
-            multiplier += 1
-        ax.set_xlabel("Compressor")
-        legend_loc = "upper left"
-        match m:
-            case "compr_ratio":
-                ax.set_ylabel("Compression ratio (%)")
-                plt.yticks(list(plt.yticks()[0]) + [100])  # TODO: check if it works
-                legend_loc = "upper right"
-            case "ins_thr":
-                ax.set_ylabel("Insertion throughput (MiB/s)")
-            case "sg_thr":
-                ax.set_ylabel("Single get throughput (MiB/s)")
-            case "mg_thr":
-                ax.set_ylabel("Multi get throughput (MiB/s)")
-        ax.set_xticks(x + width, x_compr)
-        ax.legend(title="Block sizes", alignment="left", loc=legend_loc)
-        plt.savefig(f"{charts_dir}/{m}.png", format="png", bbox_inches="tight", dpi=120)
-        plt.close()
-        print(f"Graph {m} created")
+    if make_charts:
+        charts_dir = f"charts_benchmark-{parq_size}-{PID}"
+        os.makedirs(charts_dir)
+        for m in metrics:
+            x = np.arange(len(x_compr))
+            width = 0.15
+            multiplier = -0.5
+            data = results[m]
+            fig, ax = plt.subplots(figsize=(9, 6))
+            stripped_results = {
+                key: tuple(value.values()) for key, value in data.items()
+            }
+            for size, value in stripped_results.items():
+                offset = width * multiplier
+                barlabel = ax.bar(x + offset, value, width, label=size)
+                # ax.bar_label(barlabel, padding=3)
+                multiplier += 1
+            ax.set_xlabel("Compressor")
+            legend_loc = "upper left"
+            match m:
+                case "compr_ratio":
+                    ax.set_ylabel("Compression ratio (%)")
+                    plt.yticks(list(plt.yticks()[0]) + [100])  # TODO: check if it works
+                    legend_loc = "upper right"
+                case "ins_thr":
+                    ax.set_ylabel("Insertion throughput (MiB/s)")
+                case "sg_thr":
+                    ax.set_ylabel("Single get throughput (MiB/s)")
+                case "mg_thr":
+                    ax.set_ylabel("Multi get throughput (MiB/s)")
+            ax.set_xticks(x + width, x_compr)
+            ax.legend(title="Block sizes", alignment="left", loc=legend_loc)
+            plt.savefig(
+                f"{charts_dir}/{m}.png", format="png", bbox_inches="tight", dpi=120
+            )
+            plt.close()
+            print(f"Graph {m} created")
+        print()
 
-    print(f"\nEnd computation at {time.asctime()}")
+    print(f"End computation at {time.asctime()}")
