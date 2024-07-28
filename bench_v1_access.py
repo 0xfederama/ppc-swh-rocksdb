@@ -7,7 +7,6 @@ import time
 import aimrocks
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import pyarrow.parquet as pq
 import tlsh
 
@@ -16,7 +15,7 @@ make_charts = False  # True to create charts, False to skip it
 delete_db = True  # True to delete the test dbs, False to skip it
 n_queries = 500  # number of queries to make on the dbs to test their throughput
 
-parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+parq_size = "dedup_v1"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
 small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
 parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
@@ -90,58 +89,25 @@ def get_bs_str(bs: int):
     return str(round(bs / KiB)) + " KiB"
 
 
-def sort_df(input_df: pd.DataFrame, order: str, lsh: str):
-    sorted_df = input_df
+def sort_df(data: list[dict], order: str, lsh: str):
+    sorted_data = data[:]
     if order != "parquet":
         match order:
-            case "filename_repo":
-                sorted_df = input_df.sort_values(
-                    by=["filename", "repo"],
-                    key=lambda x: (
-                        x
-                        if x.name != "filename"
-                        else x.map(lambda filename: filename[::-1])
-                    ),
-                    ignore_index=True,
-                )
-            case "repo_filename":
-                sorted_df = input_df.sort_values(
-                    by=["repo", "filename"],
-                    key=lambda x: (
-                        x
-                        if x.name != "filename"
-                        else x.map(lambda filename: filename[::-1])
-                    ),
-                    ignore_index=True,
-                )
             case "filename":
-                sorted_df = input_df.sort_values(
-                    by=["filename"],
-                    key=lambda x: (
-                        x
-                        if x.name != "filename"
-                        else x.map(lambda filename: filename[::-1])
-                    ),
-                    ignore_index=True,
-                )
+                sorted_data.sort(key=lambda x: x["filename"][::-1])
+            case "filename_repo":
+                sorted_data.sort(key=lambda x: (x["filename"][::-1], x["repo"]))
+            case "repo_filename":
+                sorted_data.sort(key=lambda x: (x["repo"], x["filename"][::-1]))
             case "fingerprint":
-                sorted_df = input_df.sort_values(
-                    by=["fingerprint", "size"],
-                    key=lambda x: (
-                        x
-                        if x.name != "fingerprint"
-                        else x.map(lambda fingerprint: fingerprint[lsh])
-                    ),
-                    ignore_index=True,
-                    ascending=[True, False],
-                )
-    return sorted_df
+                sorted_data.sort(key=lambda x: (x["fingerprint"].get(lsh), -x["size"]))
+    return sorted_data
 
 
 def test_rocksdb(
     txt_mmap: mmap,
     txt_index: dict[str, dict],
-    metainfo_df: pd.DataFrame,
+    metadata_list: list[dict],
     compressor: tuple[aimrocks.CompressionType, int],
     order: str,
     block_size: int,
@@ -180,7 +146,7 @@ def test_rocksdb(
     # sort if needed #
     ##################
     sort_start = time.time()
-    sorted_df = sort_df(metainfo_df, order, lsh)
+    sorted_df = sort_df(metadata_list, order, lsh)
     sort_end = time.time()
     sort_time = round(sort_end - sort_start)
     print_lsh = ""
@@ -192,12 +158,12 @@ def test_rocksdb(
     # build the test db #
     #####################
     tot_insert_time = 0
-    index_len = len(str(len(metainfo_df)))
+    index_len = len(str(len(metadata_list)))
     batch_size = 10000
     ins_size = 0
     # for each row in df, get from txt_contents and insert in test_db
     batch_write = aimrocks.WriteBatch()
-    for i, row in sorted_df.iterrows():
+    for i, row in enumerate(sorted_df):
         sha = str(row["hexsha"])
         ins_size += int(str(row["size"]))
         coords = txt_index[sha]
@@ -245,17 +211,6 @@ def test_rocksdb(
     results["compr_ratio"][bs_str][compr_str] = compr_ratio
     print(f"{compr_ratio},{avg_sst_size_mb},", end="")
 
-    ### TEST IF DB IS IN ORDER
-    ordered = True
-    it = db_test.iterkeys()
-    it.seek_to_first()
-    it = list(it)
-    for ind_iter in range(100):
-        if not (it[ind_iter] <= it[ind_iter + 1]):
-            print(f"\nERROR: {it[ind_iter]} not smaller than {it[ind_iter + 1]}")
-            ordered = False
-    print(f"{ordered},", end="")
-
     ########################
     # measure access times #
     ########################
@@ -267,9 +222,8 @@ def test_rocksdb(
     keys_mget = []
     tot_sg_time = 0
     tot_mg_time = 0
-    n_mget = 0
-    index_len = len(str(len(metainfo_df)))
-    for i, row in metainfo_df.iterrows():
+    index_len = len(str(len(metadata_list)))
+    for i, row in enumerate(metadata_list):
         if int(i) in queries:
             key = make_key(order, index_len, max_size, i, row, lsh)
             query_log.append(str(key))
@@ -283,12 +237,11 @@ def test_rocksdb(
             found_sg += sum(x is not None for x in [got])
             ind_query += 1
         # test multi get
-        if ind_query % 100 == 0 or (i == len(metainfo_df) - 1 and len(keys_mget) > 0):
+        if ind_query % 100 == 0 or (i == len(metadata_list) - 1 and len(keys_mget) > 0):
             start_mg_time = time.time()
             gotlist = db_test.multi_get(keys_mget)
             end_mg_time = time.time()
             keys_mget.clear()
-            n_mget += 1
             ind_query = 1
             tot_mg_time += end_mg_time - start_mg_time
             found_mg += sum(x is not None for x in gotlist)
@@ -301,7 +254,7 @@ def test_rocksdb(
     mg_thr = (got_size / MiB) / tot_mg_time
     results["sg_thr"][bs_str][compr_str] = round(sg_thr, 2)
     results["mg_thr"][bs_str][compr_str] = round(mg_thr, 2)
-    print(f"{round(sg_thr, 2)},{round(mg_thr, 2)},{n_mget} #mget")
+    print(f"{round(sg_thr, 2)},{round(mg_thr, 2)}")
     # print the query log to file
     if querylog:
         with open(
@@ -344,19 +297,19 @@ if __name__ == "__main__":
     compressors = [
         (aimrocks.CompressionType.no_compression, 0),
         (aimrocks.CompressionType.zstd_compression, 3),
-        (aimrocks.CompressionType.zstd_compression, 12),
-        (aimrocks.CompressionType.zstd_compression, 22),
+        # (aimrocks.CompressionType.zstd_compression, 12),
+        # (aimrocks.CompressionType.zstd_compression, 22),
         (aimrocks.CompressionType.zlib_compression, 6),
-        (aimrocks.CompressionType.zlib_compression, 9),
+        # (aimrocks.CompressionType.zlib_compression, 9),
         (aimrocks.CompressionType.snappy_compression, 0),
     ]
     block_sizes = [
-        4 * KiB,
+        # 4 * KiB,
         # 8 * KiB,
         32 * KiB,
         # 64 * KiB,
-        128 * KiB,
-        256 * KiB,
+        # 128 * KiB,
+        # 256 * KiB,
         # 512 * KiB,
         # 1 * MiB,
         # 4 * MiB,
@@ -378,7 +331,8 @@ if __name__ == "__main__":
 
     # read parquet to create metadata dataframe
     start_reading = time.time()
-    dataframes = []
+    metadata_list = []
+    max_size = 0
     parquet_file = pq.ParquetFile(parq_path)
     for batch in parquet_file.iter_batches(
         columns=[
@@ -390,23 +344,26 @@ if __name__ == "__main__":
         ]
     ):
         try:
-            batch_df = batch.to_pandas()
+            batch = batch.rename_columns(  #
+                {
+                    "hexsha": "hexsha",
+                    "filename": "max_stars_repo_path",
+                    "repo": "max_stars_repo_name",
+                    "fingerprint": "content",
+                    "size": "size",
+                }
+            )
+            batch_list = batch.to_pylist()
             # replace content with its fingerprint
-            # batch_df["content"] = "0"  # FIXME: test to see if memory overflows
-            batch_df["content"].apply(create_fingerprints, fingerprints=fingerprints)
-            dataframes.append(batch_df)
+            for row in batch_list:
+                content = row["fingerprint"]
+                size = row["size"]
+                max_size = max(max_size, size)
+                row["fingerprint"] = create_fingerprints(content, fingerprints)
+            metadata_list += batch_list
         except Exception as e:
             print(e)
     # concatenate the results and rename columns
-    metainfo_df = pd.concat(dataframes, ignore_index=True)
-    metainfo_df = metainfo_df.rename(
-        columns={
-            "max_stars_repo_path": "filename",
-            "max_stars_repo_name": "repo",
-            "content": "fingerprint",
-        }
-    )
-    max_size = metainfo_df["size"].max()
     end_reading = time.time()
     print(
         f"Reading parquet and computing fingerprints: {round(end_reading - start_reading)} s\n"
@@ -430,9 +387,9 @@ if __name__ == "__main__":
         os.makedirs(f"query_log-{parq_size}-{PID}")
 
     # create queries list
-    if n_queries == 0 or n_queries > len(metainfo_df):
-        n_queries = len(metainfo_df)
-    queries = list(np.random.permutation(len(metainfo_df))[:n_queries])
+    if n_queries == 0 or n_queries > len(metadata_list):
+        n_queries = len(metadata_list)
+    queries = list(np.random.permutation(len(metadata_list))[:n_queries])
 
     print(
         "BLOCK_SIZE(KiB),COMPRESSION,ORDER,SORTING_TIME(s),INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),AVG_SST_FILE_SIZE(MiB),DB_ORDERED,SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
@@ -452,7 +409,7 @@ if __name__ == "__main__":
                     test_rocksdb(
                         txt_mmap=txt_mmap,
                         txt_index=txt_index,
-                        metainfo_df=metainfo_df,
+                        metadata_list=metadata_list,
                         compressor=compr,
                         order=order,
                         block_size=block_size,
