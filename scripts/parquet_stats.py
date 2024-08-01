@@ -6,7 +6,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 from pyarrow.parquet import ParquetFile
 
-parquet_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
+parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
+full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
+parquet_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
+# parq_path = "/weka1/federico/the-stack/langs/the-stack-" + parq_size + ".parquet"
 charts_dir = "charts"
 info = ""
 KiB = 1024
