@@ -76,6 +76,20 @@ class CompoundHashKey :
     def __repr__(self):
         return str(self.kss)   
     
+    #This comparison is not very useful to group data points by similarity :-(
+    def __cmp__(self, other) :
+        for ks1,ks2 in zip(self.kss,other.kss) :
+            if ks1 < ks2 :
+                return -1
+            elif ks1 == ks2 :
+                continue
+            else :
+                return +1
+        return 0
+    
+    def __lt__(self, other):
+        return self.__cmp__(other) < 0
+    
     def to_vector(self) :
         return [int(ks) for ks in self.kss]    
     
