@@ -49,7 +49,7 @@ M = 1024 * 1024 # 100MB
 batch_size = 10 ** 4
 
 # Input Parquet file path
-datasize = '4M' # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+datasize = '8M' # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
 input_path = f'/disk2/federico/the-stack/small/the-stack-{datasize}.parquet'
 
 # Output Parquet file path
@@ -91,6 +91,14 @@ nruns+=1
 
 print('nruns:', nruns)
 
+def reverse_path(input_str):
+    dot_pos = input_str.rfind('.')
+    extension = input_str[dot_pos+1:]
+    path_parts = input_str[:dot_pos].split('/')
+    reversed_path_parts = path_parts[::-1]
+    output_str = f"{extension}.{'/'.join(reversed_path_parts)}"
+    return output_str
+
 #Read again the parquets (runs) and sort them in main memory
 
 debug = 0
@@ -98,7 +106,14 @@ for pid in range(nruns):
     parquet_file = pq.ParquetFile(f'{output_base_path}/run-{pid}.parquet')
     batch = parquet_file.read()
     df = batch.to_pandas()
-    df.sort_values(by='max_stars_repo_path', inplace=True)
+
+    #now sort in place df using the function reverse_path applied on column max_stars_repo_path
+    df['tmp'] = df['max_stars_repo_path'].apply(reverse_path)
+    df.sort_values(by='tmp', inplace=True)
+
+    #drop the temporary column
+    df.drop(columns=['tmp'], inplace=True)
+
     writer = pq.ParquetWriter(f'{output_base_path}/run-{pid}.parquet', schema, compression=None)
     writer.write_table(pa.Table.from_pandas(df, schema=schema))
     writer.close()
@@ -123,14 +138,14 @@ def merge_sort(nruns, batch_size, outpath=f'{output_base_path}/sorted-{datasize}
     print('Start merging')
     # Open the output Parquet file
     brw = BatchedRunWriter(outpath, schema, batch_size)
-    sortcolumn = 'max_stars_repo_path'
+    key_f = lambda row : reverse_path(row['max_stars_repo_path'])
 
     gens = [gen_parquet_lines(f'{output_base_path}/run-{i}.parquet') for i in range(nruns)]
     heaparr = []
     for i,gen in enumerate(gens) :
         row = next(gen)
         
-        key = row[sortcolumn]
+        key = key_f(row)
         heaparr.append((key,i,row))
     heapq.heapify(heaparr)
     
@@ -144,7 +159,7 @@ def merge_sort(nruns, batch_size, outpath=f'{output_base_path}/sorted-{datasize}
         #read next line from the same run
         line = next(gens[i])
         if line is not None:
-            heapq.heappush(heaparr, (line[sortcolumn],i,line))
+            heapq.heappush(heaparr, (key_f(line),i,line))
     brw.close()
     print('closed:', outpath)
 
