@@ -7,6 +7,7 @@
 # *.csv
 charts_benchmark*
 exp*
+ignore
 
 # Ignore util.md
 util.md
