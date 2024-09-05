@@ -12,6 +12,7 @@ full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.par
 parquet_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
 # parq_path = "/weka1/federico/the-stack/langs/the-stack-" + parq_size + ".parquet"
 charts_dir = "charts"
+print_bigfiles = False
 info = ""
 KiB = 1024
 MiB = 1024 * 1024
@@ -102,7 +103,11 @@ if __name__ == "__main__":
     files_count_32 = {}
     files_count = {}
     sizes_count = {}
-    for batch in pf.iter_batches(columns=["lang", "size"]):
+    columns = ["lang", "size"]
+    if print_bigfiles:
+        columns.append("content")
+        columns.append("max_stars_repo_path")
+    for batch in pf.iter_batches(columns=columns):
         for i, lang in enumerate(batch["lang"]):
             lang = str(lang)
             size = int(str(batch["size"][i]))
@@ -130,6 +135,34 @@ if __name__ == "__main__":
                 sizes_count[size] = sizes_count.get(size, 0) + size
                 if size <= 32 * KiB:
                     files_count_32[size] = files_count_32.get(size, 0) + 1
+            if print_bigfiles:
+                if lang == "JavaScript" and size > 11 * MiB:
+                    content = str(batch["content"][i])
+                    filename = str(batch["max_stars_repo_path"][i])
+                    if "/" in filename:
+                        filename = filename.split("/")[-1]
+                    print(f"Writing content to file {filename}, size {size / MiB}")
+                    with open(filename, "w") as f:
+                        f.write(content)
+                    print(f"Written content to file {filename}, size {size / MiB}")
+                if lang == "C" and size > 29 * MiB:
+                    content = str(batch["content"][i])
+                    filename = str(batch["max_stars_repo_path"][i])
+                    if "/" in filename:
+                        filename = filename.split("/")[-1]
+                    print(f"Writing content to file {filename}, size {size / MiB}")
+                    with open(filename, "w") as f:
+                        f.write(content)
+                    print(f"Written content to file {filename}, size {size / MiB}")
+                if lang == "C++" and size > 10 * MiB:
+                    content = str(batch["content"][i])
+                    filename = str(batch["max_stars_repo_path"][i])
+                    if "/" in filename:
+                        filename = filename.split("/")[-1]
+                    print(f"Writing content to file {filename}, size {size / MiB}")
+                    with open(filename, "w") as f:
+                        f.write(content)
+                    print(f"Written content to file {filename}, size {size / MiB}")
 
     # sort the dictionaries
     files_count = dict(sorted(files_count.items()))
@@ -236,7 +269,7 @@ if __name__ == "__main__":
     top = 20
     smalllang = {}
     biglang = {}
-    print(f"Top {top} languages:")
+    print(f"Top {top} languages (out of {len(sorted_lang_sizes)}):")
     for lang, _ in sorted_lang_sizes.items():
         if i == top:
             break
