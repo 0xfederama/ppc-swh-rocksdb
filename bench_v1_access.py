@@ -11,11 +11,11 @@ import pyarrow.parquet as pq
 import tlsh
 
 querylog = False  # True to output queries to file, False to skip it
-make_charts = False  # True to create charts, False to skip it
+make_charts = True  # True to create charts, False to skip it
 delete_db = True  # True to delete the test dbs, False to skip it
-n_queries = 500  # number of queries to make on the dbs to test their throughput
+n_queries = 5000  # number of queries to make on the dbs to test their throughput
 
-parq_size = "dedup_v1"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
 small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
 parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
@@ -25,6 +25,7 @@ parq_size_b = os.path.getsize(parq_path)
 txt_contents_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents.txt"
 txt_index_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents-index.json"
 tmp_test_path = "/weka1/federico/db/tmp/"
+# tmp_test_path = "/nvme/f.ramacciotti/tmp/"
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -65,8 +66,28 @@ def make_key(order, index_len, max_size, i, row, lsh):
         case "parquet":
             index = str(i).zfill(index_len)
             key = index + "-" + sha
-        case "filename":
+        case "filename_boffa":
             key = str(row["filename"])[::-1] + "-" + sha
+        case "filename_tosoni":
+            key = reverse_filename_tosoni(str(row["filename"])) + "-" + sha
+        case "lang_filename_tos":
+            key = (
+                str(row["lang"])
+                + "-"
+                + reverse_filename_tosoni(str(row["filename"]))
+                + "-"
+                + sha
+            )
+        case "tosoni_nopath":
+            size_len = len(str(max_size))
+            size = str(row["size"]).zfill(size_len)
+            key = (
+                reverse_filename_tosoni_nopath(str(row["filename"]))
+                + "_"
+                + size
+                + "-"
+                + sha
+            )
         case "filename_repo":
             key = str(row["filename"])[::-1] + "_" + str(row["repo"]) + "-" + sha
         case "repo_filename":
@@ -89,12 +110,49 @@ def get_bs_str(bs: int):
     return str(round(bs / KiB)) + " KiB"
 
 
+def reverse_filename_tosoni_nopath(input_path: str):
+    filename_with_extension = input_path.split("/")[-1]
+    filename, extension = filename_with_extension.rsplit(".", 1)
+    transformed_name = f"{extension}.{filename}"
+    return transformed_name
+
+
+def reverse_filename_tosoni(input_path: str):
+    # implement reversed string
+    # given path/to/file.cpp, return cpp.file/ot/htap
+    if "/" in input_path:
+        path, filename_with_extension = input_path.rsplit("/", 1)
+    else:
+        path, filename_with_extension = "", input_path
+    filename, extension = filename_with_extension.rsplit(".", 1)
+    reversed_path = path[::-1] if path else ""
+    if reversed_path:
+        transformed_path = f"{extension}.{filename}/{reversed_path}"
+    else:
+        transformed_path = f"{extension}.{filename}"
+
+    return transformed_path
+
+
 def sort_df(data: list[dict], order: str, lsh: str):
     sorted_data = data[:]
     if order != "parquet":
         match order:
-            case "filename":
+            case "filename_boffa":
                 sorted_data.sort(key=lambda x: x["filename"][::-1])
+            case "filename_tosoni":
+                sorted_data.sort(key=lambda x: reverse_filename_tosoni(x["filename"]))
+            case "lang_filename_tos":
+                sorted_data.sort(
+                    key=lambda x: (x["lang"], reverse_filename_tosoni(x["filename"]))
+                )
+            case "tosoni_nopath":
+                sorted_data.sort(
+                    key=lambda x: (
+                        reverse_filename_tosoni_nopath(x["filename"]),
+                        -x["size"],
+                    ),
+                )
             case "filename_repo":
                 sorted_data.sort(key=lambda x: (x["filename"][::-1], x["repo"]))
             case "repo_filename":
@@ -284,29 +342,33 @@ if __name__ == "__main__":
 
     # declare different tests
     orders = [
-        # "parquet",  # standard order of the parquet file (by language)
-        "filename",
+        "parquet",  # standard order of the parquet file (by language)
+        "filename_boffa",
+        "filename_tosoni",
+        "tosoni_nopath",
+        "lang_filename_tos",
         # "filename_repo",
         # "repo_filename",
-        # "fingerprint",
+        "fingerprint",
     ]
     fingerprints = [
         "tlsh",
         # "min_hash",
     ]
     compressors = [
-        (aimrocks.CompressionType.no_compression, 0),
-        (aimrocks.CompressionType.zstd_compression, 3),
+        # (aimrocks.CompressionType.no_compression, 0),
+        # (aimrocks.CompressionType.zstd_compression, 3),
         # (aimrocks.CompressionType.zstd_compression, 12),
         # (aimrocks.CompressionType.zstd_compression, 22),
         (aimrocks.CompressionType.zlib_compression, 6),
         # (aimrocks.CompressionType.zlib_compression, 9),
-        (aimrocks.CompressionType.snappy_compression, 0),
+        # (aimrocks.CompressionType.snappy_compression, 0),
     ]
     block_sizes = [
         # 4 * KiB,
         # 8 * KiB,
-        32 * KiB,
+        16 * KiB,
+        # 32 * KiB,
         # 64 * KiB,
         # 128 * KiB,
         # 256 * KiB,
@@ -338,19 +400,21 @@ if __name__ == "__main__":
         columns=[
             "hexsha",
             "max_stars_repo_path",
-            "max_stars_repo_name",
+            # "max_stars_repo_name",
             "content",
             "size",
+            "lang",
         ]
     ):
         try:
-            batch = batch.rename_columns(  #
+            batch = batch.rename_columns(
                 {
                     "hexsha": "hexsha",
                     "filename": "max_stars_repo_path",
-                    "repo": "max_stars_repo_name",
+                    # "repo": "max_stars_repo_name",
                     "fingerprint": "content",
                     "size": "size",
+                    "lang": "lang",
                 }
             )
             batch_list = batch.to_pylist()
@@ -392,7 +456,7 @@ if __name__ == "__main__":
     queries = list(np.random.permutation(len(metadata_list))[:n_queries])
 
     print(
-        "BLOCK_SIZE(KiB),COMPRESSION,ORDER,SORTING_TIME(s),INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),AVG_SST_FILE_SIZE(MiB),DB_ORDERED,SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
+        "BLOCK_SIZE(KiB),COMPRESSION,ORDER,SORTING_TIME(s),INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),AVG_SST_FILE_SIZE(MiB),SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
     )
     # run tests
     for block_size in block_sizes:
