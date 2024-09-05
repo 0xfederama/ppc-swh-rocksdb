@@ -4,11 +4,11 @@ import aimrocks
 import time
 import os
 
-test_type = "put"  # put or get
-put_parquet_path = "/disk2/federico/the-stack/small/the-stack-10G.parquet"
-get_parquet_path = "/disk2/federico/the-stack/small/the-stack-8M.parquet"
+test_type = "get"  # put or get
+put_parquet_path = "/weka1/federico/the-stack/small/the-stack-10G.parquet"
+get_parquet_path = "/weka1/federico/the-stack/small/the-stack-8M.parquet"
 ordered_by = "sha"  # sha or filename
-dbs_path = f"/disk2/federico/db/rocksdb_perf_test/{ordered_by}"
+dbs_path = f"/weka1/federico/tests-tesi/mmap_vs_rdb/{ordered_by}"
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -32,7 +32,7 @@ def test_get():
     ]
     pf = ParquetFile(get_parquet_path)
     dataframes = []
-    for batch in pf.iter_batches(columns=["hexsha"]):  # , "max_stars_repo_path"]):
+    for batch in pf.iter_batches(columns=["hexsha"]):
         batch_df = batch.to_pandas()
         dataframes.append(batch_df)
     df = pd.concat(dataframes, ignore_index=True)
@@ -67,6 +67,7 @@ def test_get():
         keys_mget = []
         found_sg = 0
         found_mg = 0
+        n_mget = 0
         # test single and multi gets
         for i, row in df.iterrows():
             i = int(i)
@@ -89,20 +90,19 @@ def test_get():
                 get_end = time.time()
                 tot_mg_time += get_end - get_start
                 keys_mget.clear()
+                n_mget += 1
                 found_mg += sum(x is not None for x in gotlist)
         total_get_size_mb = tot_get_size / MiB
         print(
             f"{round(tot_sg_time/len(df), 5)},{round(total_get_size_mb / tot_sg_time, 3)},",
             end="",
-            flush=True,
         )
         if found_sg != nqueries:
             print(f"\nERROR: found {found_sg} out of {nqueries} queries")
         if not (found_sg == found_mg):
             print(f"\nERROR: found numbers differ: {found_sg}, {found_mg}")
         print(
-            f"{round(tot_mg_time/len(df), 5)},{round(total_get_size_mb / tot_mg_time, 3)}",
-            flush=True,
+            f"{round(tot_mg_time/len(df), 5)},{round(total_get_size_mb / tot_mg_time, 3)},{n_mget} #mget",
         )
 
 
@@ -125,7 +125,7 @@ def test_put():
         (aimrocks.CompressionType.snappy_compression, "snappy"),
     ]
     print(
-        f"PUT test, reading {len(df)} records taken from {put_parquet_path}, DBs in {dbs_path}, , ordered by {ordered_by}"
+        f"PUT test, reading {len(df)} records taken from {put_parquet_path}, DBs in {dbs_path}, ordered by {ordered_by}"
     )
     print(
         "BLOCK_SIZE(KiB),COMPRESSION,TOT_PUT_SIZE(MiB),TOT_PUT_TIME(s),AVG_PUT_TIME(s),THROUGHPUT(MiB/s)"
