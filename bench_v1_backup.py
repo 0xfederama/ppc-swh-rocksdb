@@ -10,14 +10,14 @@ import tlsh
 
 
 parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
-small_parq_path = "/disk2/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
-full_parq_path = "/disk2/federico/the-stack/the-stack-" + parq_size + ".parquet"
+small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
+full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + ".parquet"
 parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
 parq_size_b = os.path.getsize(parq_path)
 
-txt_contents_path = "/disk2/federico/the-stack/the-stack-dedup_v1-contents.txt"
-txt_index_path = "/disk2/federico/the-stack/the-stack-dedup_v1-contents-index.json"
-tmp_test_path = "/disk2/federico/db/tmp/"
+txt_contents_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents.txt"
+txt_index_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents-index.json"
+tmp_test_path = "/weka1/federico/db/tmp/"
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -129,11 +129,14 @@ def test_backup(
     ##################
     # sort if needed #
     ##################
+    sort_start = time.time()
     sorted_df = sort_df(metainfo_df, order, lsh)
+    sort_end = time.time()
+    sort_time = round(sort_end - sort_start)
     print_lsh = ""
     if order == "fingerprint":
         print_lsh = "-" + lsh
-    print(f"{order}{print_lsh},", end="")
+    print(f"{order}{print_lsh},{sort_time},", end="")
 
     #######################
     # build the test file #
@@ -260,7 +263,7 @@ if __name__ == "__main__":
         "filename",
         # "filename_repo",
         # "repo_filename",
-        # "fingerprint",
+        "fingerprint",
     ]
     fingerprints = [
         "tlsh",
@@ -304,7 +307,7 @@ if __name__ == "__main__":
 
     # print header and execute tests
     print(
-        "COMPRESSION,ORDER,COMPRESSION_RATIO(%),TOT_COMPR_SIZE(GiB),COMPRESSION_SPEED(MiB/s),DECOMPRESSION_SPEED(MiB/S)"
+        "COMPRESSION,ORDER,SORTING_TIME(s),COMPRESSION_RATIO(%),TOT_COMPR_SIZE(GiB),COMPRESSION_SPEED(MiB/s),DECOMPRESSION_SPEED(MiB/S)"
     )
     compressors = [
         ("no", "no"),
