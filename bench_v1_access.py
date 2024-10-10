@@ -11,21 +11,33 @@ import pyarrow.parquet as pq
 import tlsh
 
 querylog = False  # True to output queries to file, False to skip it
-make_charts = True  # True to create charts, False to skip it
-delete_db = True  # True to delete the test dbs, False to skip it
-n_queries = 5000  # number of queries to make on the dbs to test their throughput
+make_charts = False  # True to create charts, False to skip it
+keep_db = False  # True to delete the test dbs, False to skip it
+drive_type = "HDD"  # HDD to test on HDD, SSD to test on SSD
+n_queries = 500  # number of queries to make on the dbs to test their throughput
 
 parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+
 small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
-parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
-# parq_path = "/weka1/federico/the-stack/langs/the-stack-" + parq_size + ".parquet"
+parq_path = small_parq_path if "v1" not in parq_size else full_parq_path
+if parq_size == "200G":
+    parq_path = "/weka1/federico/boffa-200G-py/dataset.parquet"
 parq_size_b = os.path.getsize(parq_path)
 
-txt_contents_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents.txt"
-txt_index_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents-index.json"
-tmp_test_path = "/weka1/federico/db/tmp/"
-# tmp_test_path = "/nvme/f.ramacciotti/tmp/"
+txt_contents_path = "/weka1/federico/the-stack/the-stack-v1-contents.txt"
+txt_index_path = "/weka1/federico/the-stack/the-stack-v1-contents-index.json"
+if parq_size == "200G":
+    txt_contents_path = "/weka1/federico/boffa-200G-py/contents.txt"
+    txt_index_path = "/weka1/federico/boffa-200G-py/contents-index.json"
+
+if drive_type == "HDD":
+    tmp_test_path = "/weka1/federico/db/tmp/"
+elif drive_type == "SSD":
+    tmp_test_path = "/nvme/f.ramacciotti/tmp/"
+else:
+    print("Drive type must be either HDD or SSD")
+    exit()
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -36,8 +48,10 @@ metrics = ["compr_ratio", "ins_thr", "sg_thr", "mg_thr"]
 results = {}
 
 
-def create_fingerprints(content: str, fingerprints: list[str]) -> dict[str, str]:
+def create_fingerprints(content, fingerprints: list[str]) -> dict[str, str]:
     # create a dict of fingerprints
+    if type(content) != str:
+        content = content.decode("latin-1")
     out = {}
     for lsh in fingerprints:
         fingerprint = "0"
@@ -67,24 +81,31 @@ def make_key(order, index_len, max_size, i, row, lsh):
             index = str(i).zfill(index_len)
             key = index + "-" + sha
         case "filename_boffa":
-            key = str(row["filename"])[::-1] + "-" + sha
+            size_len = len(str(max_size))
+            size = str(row["size"]).zfill(size_len)
+            filename = str(row["filename"])
+            if filename is None:
+                filename = ""
+            key = filename[::-1] + "_" + size + "-" + sha
         case "filename_tosoni":
-            key = reverse_filename_tosoni(str(row["filename"])) + "-" + sha
+            size_len = len(str(max_size))
+            size = str(row["size"]).zfill(size_len)
+            filename = str(row["filename"])
+            if filename is None:
+                filename = ""
+            key = reverse_filename_tosoni(filename) + "_" + size + "-" + sha
+        case "tosoni_nopath":
+            size_len = len(str(max_size))
+            size = str(row["size"]).zfill(size_len)
+            filename = str(row["filename"])
+            if filename is None:
+                filename = ""
+            key = reverse_filename_tosoni_nopath(filename) + "_" + size + "-" + sha
         case "lang_filename_tos":
             key = (
                 str(row["lang"])
                 + "-"
                 + reverse_filename_tosoni(str(row["filename"]))
-                + "-"
-                + sha
-            )
-        case "tosoni_nopath":
-            size_len = len(str(max_size))
-            size = str(row["size"]).zfill(size_len)
-            key = (
-                reverse_filename_tosoni_nopath(str(row["filename"]))
-                + "_"
-                + size
                 + "-"
                 + sha
             )
@@ -111,25 +132,34 @@ def get_bs_str(bs: int):
 
 
 def reverse_filename_tosoni_nopath(input_path: str):
+    if input_path is None:
+        return ""
     filename_with_extension = input_path.split("/")[-1]
-    filename, extension = filename_with_extension.rsplit(".", 1)
-    transformed_name = f"{extension}.{filename}"
+    transformed_name = filename_with_extension
+    if "." in transformed_name:
+        filename, extension = filename_with_extension.rsplit(".", 1)
+        transformed_name = f"{extension}.{filename}"
     return transformed_name
 
 
 def reverse_filename_tosoni(input_path: str):
+    if input_path is None:
+        return ""
     # implement reversed string
     # given path/to/file.cpp, return cpp.file/ot/htap
     if "/" in input_path:
         path, filename_with_extension = input_path.rsplit("/", 1)
     else:
         path, filename_with_extension = "", input_path
-    filename, extension = filename_with_extension.rsplit(".", 1)
+    transformed_name = filename_with_extension
+    if "." in transformed_name:
+        filename, extension = filename_with_extension.rsplit(".", 1)
+        transformed_name = f"{extension}.{filename}"
     reversed_path = path[::-1] if path else ""
     if reversed_path:
-        transformed_path = f"{extension}.{filename}/{reversed_path}"
+        transformed_path = f"{transformed_name}/{reversed_path}"
     else:
-        transformed_path = f"{extension}.{filename}"
+        transformed_path = f"{transformed_name}"
 
     return transformed_path
 
@@ -139,19 +169,44 @@ def sort_df(data: list[dict], order: str, lsh: str):
     if order != "parquet":
         match order:
             case "filename_boffa":
-                sorted_data.sort(key=lambda x: x["filename"][::-1])
-            case "filename_tosoni":
-                sorted_data.sort(key=lambda x: reverse_filename_tosoni(x["filename"]))
-            case "lang_filename_tos":
                 sorted_data.sort(
-                    key=lambda x: (x["lang"], reverse_filename_tosoni(x["filename"]))
+                    key=lambda x: (
+                        x["filename"][::-1] if x["filename"] != None else "",
+                        -x["size"],
+                    )
+                )
+            case "filename_tosoni":
+                sorted_data.sort(
+                    key=lambda x: (
+                        (
+                            reverse_filename_tosoni(x["filename"])
+                            if x["filename"] != None
+                            else ""
+                        ),
+                        -x["size"],
+                    )
                 )
             case "tosoni_nopath":
                 sorted_data.sort(
                     key=lambda x: (
-                        reverse_filename_tosoni_nopath(x["filename"]),
+                        (
+                            reverse_filename_tosoni_nopath(x["filename"])
+                            if x["filename"] != None
+                            else ""
+                        ),
                         -x["size"],
                     ),
+                )
+            case "lang_filename_tos":
+                sorted_data.sort(
+                    key=lambda x: (
+                        x["lang"],
+                        (
+                            reverse_filename_tosoni(x["filename"])
+                            if x["filename"] != None
+                            else ""
+                        ),
+                    )
                 )
             case "filename_repo":
                 sorted_data.sort(key=lambda x: (x["filename"][::-1], x["repo"]))
@@ -325,7 +380,7 @@ def test_rocksdb(
     #################
     del db_test
     del sorted_df
-    if delete_db:
+    if not keep_db:
         if os.path.exists(db_test_path):
             shutil.rmtree(db_test_path)
 
@@ -427,7 +482,7 @@ if __name__ == "__main__":
             metadata_list += batch_list
         except Exception as e:
             print(e)
-    # concatenate the results and rename columns
+    # concatenate the results
     end_reading = time.time()
     print(
         f"Reading parquet and computing fingerprints: {round(end_reading - start_reading)} s\n"
