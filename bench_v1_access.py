@@ -13,8 +13,9 @@ import tlsh
 querylog = False  # True to output queries to file, False to skip it
 make_charts = False  # True to create charts, False to skip it
 keep_db = False  # True to delete the test dbs, False to skip it
+readonly = False  # True to close db and reopen in readonly, False to skip it
 drive_type = "HDD"  # HDD to test on HDD, SSD to test on SSD
-n_queries = 500  # number of queries to make on the dbs to test their throughput
+n_queries = 50000  # number of queries to make on the dbs to test their throughput
 
 parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
 
@@ -279,9 +280,9 @@ def test_rocksdb(
     for i, row in enumerate(sorted_df):
         sha = str(row["hexsha"])
         ins_size += int(str(row["size"]))
-        coords = txt_index[sha]
-        start = coords[0]
-        length = coords[1]
+        mmap_coords = txt_index[sha]
+        start = mmap_coords[0]
+        length = mmap_coords[1]
         txt_mmap.seek(start)
         content = txt_mmap.read(length)
         key = make_key(order, index_len, max_size, i, row, lsh)
@@ -324,6 +325,23 @@ def test_rocksdb(
     results["compr_ratio"][bs_str][compr_str] = compr_ratio
     print(f"{compr_ratio},{avg_sst_size_mb},", end="")
 
+    ### Close the DB and reopen it
+    if readonly:
+        db_test.close()
+        opts = aimrocks.Options()
+        opts.create_if_missing = False
+        opts.error_if_exists = False
+        opts.allow_mmap_reads = True
+        opts.paranoid_checks = False
+        opts.use_adaptive_mutex = True
+        opts.compression = compr
+        if level != 0:
+            opts.compression_opts = {"level": level}
+        opts.table_factory = aimrocks.BlockBasedTableFactory(block_size=block_size)
+        db_test_readonly = aimrocks.DB(db_test_path, opts, read_only=True)
+    else:
+        db_test_readonly = db_test
+
     ########################
     # measure access times #
     ########################
@@ -343,7 +361,7 @@ def test_rocksdb(
             keys_mget.append(str.encode(key))
             # test single get
             start_sg_time = time.time()
-            got = db_test.get(str.encode(key))
+            got = db_test_readonly.get(str.encode(key))
             end_sg_time = time.time()
             tot_sg_time += end_sg_time - start_sg_time
             got_size += len(got)
@@ -352,7 +370,7 @@ def test_rocksdb(
         # test multi get
         if ind_query % 100 == 0 or (i == len(metadata_list) - 1 and len(keys_mget) > 0):
             start_mg_time = time.time()
-            gotlist = db_test.multi_get(keys_mget)
+            gotlist = db_test_readonly.multi_get(keys_mget)
             end_mg_time = time.time()
             keys_mget.clear()
             ind_query = 1
@@ -378,7 +396,7 @@ def test_rocksdb(
     #################
     # delete the db #
     #################
-    del db_test
+    del db_test_readonly
     del sorted_df
     if not keep_db:
         if os.path.exists(db_test_path):
@@ -397,14 +415,14 @@ if __name__ == "__main__":
 
     # declare different tests
     orders = [
-        "parquet",  # standard order of the parquet file (by language)
+        # "parquet",  # standard order of the parquet file (by language)
         "filename_boffa",
-        "filename_tosoni",
-        "tosoni_nopath",
-        "lang_filename_tos",
+        # "filename_tosoni",
+        # "tosoni_nopath",
+        # "lang_filename_tos",
         # "filename_repo",
         # "repo_filename",
-        "fingerprint",
+        # "fingerprint",
     ]
     fingerprints = [
         "tlsh",
@@ -412,24 +430,24 @@ if __name__ == "__main__":
     ]
     compressors = [
         # (aimrocks.CompressionType.no_compression, 0),
-        # (aimrocks.CompressionType.zstd_compression, 3),
-        # (aimrocks.CompressionType.zstd_compression, 12),
+        (aimrocks.CompressionType.zstd_compression, 3),
+        (aimrocks.CompressionType.zstd_compression, 12),
         # (aimrocks.CompressionType.zstd_compression, 22),
         (aimrocks.CompressionType.zlib_compression, 6),
         # (aimrocks.CompressionType.zlib_compression, 9),
-        # (aimrocks.CompressionType.snappy_compression, 0),
+        (aimrocks.CompressionType.snappy_compression, 0),
     ]
     block_sizes = [
-        # 4 * KiB,
+        4 * KiB,
         # 8 * KiB,
-        16 * KiB,
+        # 16 * KiB,
         # 32 * KiB,
         # 64 * KiB,
         # 128 * KiB,
-        # 256 * KiB,
+        256 * KiB,
         # 512 * KiB,
         # 1 * MiB,
-        # 4 * MiB,
+        4 * MiB,
         # 10 * MiB,
     ]
     print(f"Orderings: {orders}, fingerprints: {fingerprints}")

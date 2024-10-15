@@ -13,16 +13,32 @@ import tlsh
 querylog = False  # True to output queries to file, False to skip it
 make_charts = True  # True to create charts, False to skip it
 delete_db = True  # True to delete the test dbs, False to skip it
-n_queries = 500  # number of queries to make on the dbs to test their throughput
+readonly = False  # True to close db and reopen in readonly, False to skip it
+drive_type = "HDD"  # HDD to test on HDD, SSD to test on SSD
+n_queries = 50000  # number of queries to make on the dbs to test their throughput
 
 parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+
 small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
-parq_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
-# parq_path = "/weka1/federico/the-stack/langs/the-stack-60G-py.parquet"
+parq_path = small_parq_path if "v1" not in parq_size else full_parq_path
+if parq_size == "200G":
+    parq_path = "/weka1/federico/boffa-200G-py/dataset.parquet"
 parq_size_b = os.path.getsize(parq_path)
 
-tmp_test_path = "/weka1/federico/db/tmp/"
+txt_contents_path = "/weka1/federico/the-stack/the-stack-v1-contents.txt"
+txt_index_path = "/weka1/federico/the-stack/the-stack-v1-contents-index.json"
+if parq_size == "200G":
+    txt_contents_path = "/weka1/federico/boffa-200G-py/contents.txt"
+    txt_index_path = "/weka1/federico/boffa-200G-py/contents-index.json"
+
+if drive_type == "HDD":
+    tmp_test_path = "/weka1/federico/db/tmp/"
+elif drive_type == "SSD":
+    tmp_test_path = "/nvme/f.ramacciotti/tmp/"
+else:
+    print("Drive type must be either HDD or SSD")
+    exit()
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -33,22 +49,24 @@ metrics = ["compr_ratio", "ins_thr", "sg_thr", "mg_thr"]
 results = {}
 
 
-def compute_fingerprint(content: str, fingerprint: str):
-    lsh = "0"
+def compute_fingerprint(content, lsh: str):
+    if type(content) != str:
+        content = content.decode("latin-1")
+    fingerprint = "0"
     # don't compute hash for strings bigger than 1 MiB (keep "0")
     if len(content) > 1 * MiB:
-        return lsh
-    match fingerprint:
+        return fingerprint
+    match lsh:
         case "tlsh":
             if len(content) > 50:  # requested by tlsh algorithm
                 # first 8 bytes are metadata
                 try:
-                    lsh = tlsh.hash(str.encode(content))[8:]
+                    fingerprint = tlsh.hash(str.encode(content))[8:]
                 except Exception as e:
                     print(f"ERROR IN CREATE_FINGERPRINTS: {e}")
         # case "min_hash":
         #     fingerprint = hash(content)
-    return lsh
+    return fingerprint
 
 
 def make_key(order, index_len, max_size, i, row, lsh):
@@ -58,8 +76,35 @@ def make_key(order, index_len, max_size, i, row, lsh):
         case "parquet":
             index = str(i).zfill(index_len)
             key = index + "-" + sha
-        case "filename":
-            key = str(row["filename"])[::-1] + "-" + sha
+        case "filename_boffa":
+            size_len = len(str(max_size))
+            size = str(row["size"]).zfill(size_len)
+            filename = str(row["filename"])
+            if filename is None:
+                filename = ""
+            key = filename[::-1] + "_" + size + "-" + sha
+        case "filename_tosoni":
+            size_len = len(str(max_size))
+            size = str(row["size"]).zfill(size_len)
+            filename = str(row["filename"])
+            if filename is None:
+                filename = ""
+            key = reverse_filename_tosoni(filename) + "_" + size + "-" + sha
+        case "tosoni_nopath":
+            size_len = len(str(max_size))
+            size = str(row["size"]).zfill(size_len)
+            filename = str(row["filename"])
+            if filename is None:
+                filename = ""
+            key = reverse_filename_tosoni_nopath(filename) + "_" + size + "-" + sha
+        case "lang_filename_tos":
+            key = (
+                str(row["lang"])
+                + "-"
+                + reverse_filename_tosoni(str(row["filename"]))
+                + "-"
+                + sha
+            )
         case "filename_repo":
             key = str(row["filename"])[::-1] + "_" + str(row["repo"]) + "-" + sha
         case "repo_filename":
@@ -70,21 +115,39 @@ def make_key(order, index_len, max_size, i, row, lsh):
             key = str(row[order][lsh]) + "_" + size + "-" + sha
     return key
 
+
 def reverse_filename_tosoni(input_path: str):
+    if input_path is None:
+        return ""
     # implement reversed string
     # given path/to/file.cpp, return cpp.file/ot/htap
     if "/" in input_path:
         path, filename_with_extension = input_path.rsplit("/", 1)
     else:
         path, filename_with_extension = "", input_path
-    filename, extension = filename_with_extension.rsplit(".", 1)
+    transformed_name = filename_with_extension
+    if "." in transformed_name:
+        filename, extension = filename_with_extension.rsplit(".", 1)
+        transformed_name = f"{extension}.{filename}"
     reversed_path = path[::-1] if path else ""
     if reversed_path:
-        transformed_path = f"{extension}.{filename}/{reversed_path}"
+        transformed_path = f"{transformed_name}/{reversed_path}"
     else:
-        transformed_path = f"{extension}.{filename}"
+        transformed_path = f"{transformed_name}"
 
     return transformed_path
+
+
+def reverse_filename_tosoni_nopath(input_path: str):
+    if input_path is None:
+        return ""
+    filename_with_extension = input_path.split("/")[-1]
+    transformed_name = filename_with_extension
+    if "." in transformed_name:
+        filename, extension = filename_with_extension.rsplit(".", 1)
+        transformed_name = f"{extension}.{filename}"
+    return transformed_name
+
 
 def get_compr_str(compr: tuple[aimrocks.CompressionType, int]):
     c_str = compr[0]
@@ -95,54 +158,6 @@ def get_compr_str(compr: tuple[aimrocks.CompressionType, int]):
 
 def get_bs_str(bs: int):
     return str(round(bs / KiB)) + " KiB"
-
-
-def sort_df(input_df: pd.DataFrame, order: str, lsh: str):
-    sorted_df = input_df
-    if order != "parquet":
-        match order:
-            case "filename_repo":
-                sorted_df = input_df.sort_values(
-                    by=["filename", "repo"],
-                    key=lambda x: (
-                        x
-                        if x.name != "filename"
-                        else x.map(lambda filename: filename[::-1])
-                    ),
-                    ignore_index=True,
-                )
-            case "repo_filename":
-                sorted_df = input_df.sort_values(
-                    by=["repo", "filename"],
-                    key=lambda x: (
-                        x
-                        if x.name != "filename"
-                        else x.map(lambda filename: filename[::-1])
-                    ),
-                    ignore_index=True,
-                )
-            case "filename":
-                sorted_df = input_df.sort_values(
-                    by=["filename"],
-                    key=lambda x: (
-                        x
-                        if x.name != "filename"
-                        else x.map(lambda filename: filename[::-1])
-                    ),
-                    ignore_index=True,
-                )
-            case "fingerprint":
-                sorted_df = input_df.sort_values(
-                    by=["fingerprint", "size"],
-                    key=lambda x: (
-                        x
-                        if x.name != "fingerprint"
-                        else x.map(lambda fingerprint: fingerprint[lsh])
-                    ),
-                    ignore_index=True,
-                    ascending=[True, False],
-                )
-    return sorted_df
 
 
 def test_rocksdb(
@@ -196,30 +211,13 @@ def test_rocksdb(
     batch_write = aimrocks.WriteBatch()
     for batch in parquet_file.iter_batches():
         for i in range(len((batch))):
-            sha = str(batch["hexsha"][i])
+            row = {}
+            for k, l in batch.items():
+                row[k] = l[i]
             content = str(batch["content"][i])
             cont_size = int(str(batch["size"][i]))
-            filename = str(batch["max_stars_repo_path"][i])
-            repo = str(batch["max_stars_repo_name"][i])
             ins_size += cont_size
-            key = ""
-            match order:
-                case "parquet":
-                    index = str(i).zfill(index_len)
-                    key = index + "-" + sha
-                case "filename":
-                    key = filename[::-1] + "-" + sha
-                case "filename_tosoni":
-                    key = reverse_filename_tosoni(filename) + "-" + sha
-                case "filename_repo":
-                    key = filename[::-1] + "_" + repo + "-" + sha
-                case "repo_filename":
-                    key = repo + "_" + filename[::-1] + "-" + sha
-                case "fingerprint":
-                    size_len = len(str(max_size))
-                    size = str(cont_size).zfill(size_len)
-                    fingerprint = compute_fingerprint(content, lsh)
-                    key = str(fingerprint) + "_" + size + "-" + sha
+            key = make_key(order, index_len, max_size, i, row, lsh)
             if ind_parq in queries:
                 query_log.append(key)
             batch_write.put(str.encode(key), str.encode(content))
@@ -259,16 +257,22 @@ def test_rocksdb(
     results["compr_ratio"][bs_str][compr_str] = compr_ratio
     print(f"{compr_ratio},{avg_sst_size_mb},", end="")
 
-    ### TEST IF DB IS IN ORDER
-    ordered = True
-    it = db_test.iterkeys()
-    it.seek_to_first()
-    it = list(it)
-    for ind_iter in range(100):
-        if not (it[ind_iter] <= it[ind_iter + 1]):
-            print(f"\nERROR: {it[ind_iter]} not smaller than {it[ind_iter + 1]}")
-            ordered = False
-    print(f"{ordered},", end="")
+    ### Close the DB and reopen it
+    if readonly:
+        db_test.close()
+        opts = aimrocks.Options()
+        opts.create_if_missing = False
+        opts.error_if_exists = False
+        opts.allow_mmap_reads = True
+        opts.paranoid_checks = False
+        opts.use_adaptive_mutex = True
+        opts.compression = compr
+        if level != 0:
+            opts.compression_opts = {"level": level}
+        opts.table_factory = aimrocks.BlockBasedTableFactory(block_size=block_size)
+        db_test_readonly = aimrocks.DB(db_test_path, opts, read_only=True)
+    else:
+        db_test_readonly = db_test
 
     ########################
     # measure access times #
@@ -320,7 +324,7 @@ def test_rocksdb(
     #################
     # delete the db #
     #################
-    del db_test
+    del db_test_readonly
     if delete_db:
         if os.path.exists(db_test_path):
             shutil.rmtree(db_test_path)
@@ -338,10 +342,12 @@ if __name__ == "__main__":
     # declare different tests
     orders = [
         # "parquet",  # standard order of the parquet file (by language)
-        "filename",
+        "filename_boffa",
         # "filename_tosoni",
+        # "tosoni_nopath",
         # "filename_repo",
         # "repo_filename",
+        # "lang_filename_tos",
         # "fingerprint",
     ]
     fingerprints = [
@@ -350,9 +356,9 @@ if __name__ == "__main__":
     ]
     # define compressors and block sizes
     compressors = [
-        (aimrocks.CompressionType.no_compression, 0),
+        # (aimrocks.CompressionType.no_compression, 0),
         (aimrocks.CompressionType.zstd_compression, 3),
-        # (aimrocks.CompressionType.zstd_compression, 12),
+        (aimrocks.CompressionType.zstd_compression, 12),
         # (aimrocks.CompressionType.zstd_compression, 22),
         (aimrocks.CompressionType.zlib_compression, 6),
         # (aimrocks.CompressionType.zlib_compression, 9),
