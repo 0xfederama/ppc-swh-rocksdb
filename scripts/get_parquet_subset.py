@@ -3,18 +3,18 @@ import time
 import pandas as pd
 from pyarrow.parquet import ParquetFile
 
-size = float("inf")  # float('inf') to take all the files
-size_str = ""  # automatically the ending size if size is inf
-minsize = 0  # 0 to take files with all sizes
-minsize_str = "1M"
-languages = ["C", "C++"]  # [] to take all languages
-lang_str = "cc"
-
 KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
 
-parq_path = "/disk2/data/the-stack/the-stack-dedup_v1.parquet"
+size = 100 * GiB  # float('inf') to take all the files
+size_str = "100G"  # automatically the ending size if size is inf
+minsize = 0  # 0 to take files with all sizes
+minsize_str = ""
+languages = ["Python"]  # [] to take all languages
+lang_str = "py"
+
+parq_path = "/weka1/federico/the-stack/the-stack-dedup_v1.parquet"
 
 if __name__ == "__main__":
     print(f"Starting at {time.asctime()}, pid: {os.getpid()}")
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     if size == float("inf"):
         size_str = str(round(tot_size / GiB)) + "G"
 
-    output_path = "/disk2/federico/the-stack"
+    output_path = "/weka1/federico/the-stack/"
     if languages != []:
         output_path += "/langs"
         lang_str = "-" + lang_str

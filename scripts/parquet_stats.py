@@ -6,13 +6,12 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 from pyarrow.parquet import ParquetFile
 
-parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+parq_size = "dedup_v1"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
 small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
 parquet_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
-# parq_path = "/weka1/federico/the-stack/langs/the-stack-" + parq_size + ".parquet"
 charts_dir = "charts"
-print_bigfiles = False
+print_bigfiles = True
 info = ""
 KiB = 1024
 MiB = 1024 * 1024
@@ -107,6 +106,7 @@ if __name__ == "__main__":
     if print_bigfiles:
         columns.append("content")
         columns.append("max_stars_repo_path")
+        columns.append("max_stars_repo_name")
     for batch in pf.iter_batches(columns=columns):
         for i, lang in enumerate(batch["lang"]):
             lang = str(lang)
@@ -136,33 +136,20 @@ if __name__ == "__main__":
                 if size <= 32 * KiB:
                     files_count_32[size] = files_count_32.get(size, 0) + 1
             if print_bigfiles:
-                if lang == "JavaScript" and size > 11 * MiB:
+                if (
+                    (lang == "JavaScript" and size > 11 * MiB)
+                    or (lang == "C" and size > 29 * MiB)
+                    or (lang == "C++" and size > 10 * MiB)
+                ):
                     content = str(batch["content"][i])
                     filename = str(batch["max_stars_repo_path"][i])
+                    repo = str(batch["max_stars_repo_name"][i])
+                    print(f"File {filename}, repo {repo}, size {size / MiB} MB")
                     if "/" in filename:
                         filename = filename.split("/")[-1]
-                    print(f"Writing content to file {filename}, size {size / MiB}")
                     with open(filename, "w") as f:
                         f.write(content)
-                    print(f"Written content to file {filename}, size {size / MiB}")
-                if lang == "C" and size > 29 * MiB:
-                    content = str(batch["content"][i])
-                    filename = str(batch["max_stars_repo_path"][i])
-                    if "/" in filename:
-                        filename = filename.split("/")[-1]
-                    print(f"Writing content to file {filename}, size {size / MiB}")
-                    with open(filename, "w") as f:
-                        f.write(content)
-                    print(f"Written content to file {filename}, size {size / MiB}")
-                if lang == "C++" and size > 10 * MiB:
-                    content = str(batch["content"][i])
-                    filename = str(batch["max_stars_repo_path"][i])
-                    if "/" in filename:
-                        filename = filename.split("/")[-1]
-                    print(f"Writing content to file {filename}, size {size / MiB}")
-                    with open(filename, "w") as f:
-                        f.write(content)
-                    print(f"Written content to file {filename}, size {size / MiB}")
+                    print(f"Written content to file {filename}, size {size / MiB} MB")
 
     # sort the dictionaries
     files_count = dict(sorted(files_count.items()))
@@ -300,15 +287,18 @@ if __name__ == "__main__":
     print(f"\nGraph {name} created")
 
     name = "lang_boxplot_big"
-    x = list(biglang.keys())
-    y = list(biglang.values())
-    plt.figure(figsize=(16, 9))
-    plt.ylabel("File sizes in KiB")
-    plt.xlabel("Languages")
-    plt.xticks(rotation=45, ha="right")
-    plt.boxplot(y, labels=x, patch_artist=True, showfliers=False)
-    plt.savefig(f"{charts_dir}/{name}.png", format="png", bbox_inches="tight", dpi=120)
-    plt.close()
-    print(f"\nGraph {name} created")
+    if biglangs != {}:
+        x = list(biglang.keys())
+        y = list(biglang.values())
+        plt.figure(figsize=(16, 9))
+        plt.ylabel("File sizes in KiB")
+        plt.xlabel("Languages")
+        plt.xticks(rotation=45, ha="right")
+        plt.boxplot(y, labels=x, patch_artist=True, showfliers=False)
+        plt.savefig(
+            f"{charts_dir}/{name}.png", format="png", bbox_inches="tight", dpi=120
+        )
+        plt.close()
+        print(f"\nGraph {name} created")
 
     print(f"\nEnding at {time.asctime()}")
