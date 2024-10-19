@@ -49,32 +49,23 @@ metrics = ["compr_ratio", "ins_thr", "sg_thr", "mg_thr"]
 results = {}
 
 
-def create_fingerprints(content, fingerprints: list[str]) -> dict[str, str]:
-    # create a dict of fingerprints
+def create_tlsh(content) -> str:
     if type(content) != str:
         content = content.decode("latin-1")
-    out = {}
-    for lsh in fingerprints:
-        fingerprint = "0"
-        if len(content) > 2**20:
-            # don't compute hash for strings bigger than 1 MiB (keep "0")
-            out[lsh] = fingerprint
-            continue
-        match lsh:
-            case "tlsh":
-                if len(content) > 50:  # requested by tlsh algorithm
-                    # first 8 bytes are metadata
-                    try:
-                        fingerprint = tlsh.hash(str.encode(content))[8:]
-                    except Exception as e:
-                        print(f"ERROR IN CREATE_FINGERPRINTS: {e}")
-            # case "min_hash":
-            #     fingerprint = hash(content)
-        out[lsh] = fingerprint
-    return out
+    fingerprint = "0"
+    # don't compute hash for strings bigger than 1 MiB (keep "0")
+    if len(content) > 1 * MiB:
+        return fingerprint
+    if len(content) > 50:  # requested by tlsh algorithm
+        # first 8 bytes are metadata
+        try:
+            fingerprint = tlsh.hash(str.encode(content))[8:]
+        except Exception as e:
+            print(f"ERROR IN CREATE_FINGERPRINTS: {e}")
+    return fingerprint
 
 
-def make_key(order, index_len, max_size, i, row, lsh):
+def make_key(order, index_len, max_size, i, row):
     key = ""
     sha = str(row["hexsha"])
     match order:
@@ -114,10 +105,10 @@ def make_key(order, index_len, max_size, i, row, lsh):
             key = str(row["filename"])[::-1] + "_" + str(row["repo"]) + "-" + sha
         case "repo_filename":
             key = str(row["repo"]) + "_" + str(row["filename"])[::-1] + "-" + sha
-        case "fingerprint":
+        case "tlsh":
             size_len = len(str(max_size))
             size = str(row["size"]).zfill(size_len)
-            key = str(row[order][lsh]) + "_" + size + "-" + sha
+            key = str(row["tlsh"]) + "_" + size + "-" + sha
     return key
 
 
@@ -165,7 +156,7 @@ def reverse_filename_tosoni(input_path: str):
     return transformed_path
 
 
-def sort_df(data: list[dict], order: str, lsh: str):
+def sort_df(data: list[dict], order: str):
     sorted_data = data[:]
     if order != "parquet":
         match order:
@@ -213,8 +204,8 @@ def sort_df(data: list[dict], order: str, lsh: str):
                 sorted_data.sort(key=lambda x: (x["filename"][::-1], x["repo"]))
             case "repo_filename":
                 sorted_data.sort(key=lambda x: (x["repo"], x["filename"][::-1]))
-            case "fingerprint":
-                sorted_data.sort(key=lambda x: (x["fingerprint"].get(lsh), -x["size"]))
+            case "tlsh":
+                sorted_data.sort(key=lambda x: (x["tlsh"], -x["size"]))
     return sorted_data
 
 
@@ -225,7 +216,6 @@ def test_rocksdb(
     compressor: tuple[aimrocks.CompressionType, int],
     order: str,
     block_size: int,
-    lsh: str,
     max_size: int,
     queries: list[int],
 ):
@@ -260,13 +250,10 @@ def test_rocksdb(
     # sort if needed #
     ##################
     sort_start = time.time()
-    sorted_df = sort_df(metadata_list, order, lsh)
+    sorted_df = sort_df(metadata_list, order)
     sort_end = time.time()
     sort_time = round(sort_end - sort_start)
-    print_lsh = ""
-    if order == "fingerprint":
-        print_lsh = "-" + lsh
-    print(f"{order}{print_lsh},{sort_time},", end="")
+    print(f"{order},{sort_time},", end="")
 
     #####################
     # build the test db #
@@ -285,7 +272,7 @@ def test_rocksdb(
         length = mmap_coords[1]
         txt_mmap.seek(start)
         content = txt_mmap.read(length)
-        key = make_key(order, index_len, max_size, i, row, lsh)
+        key = make_key(order, index_len, max_size, i, row)
         batch_write.put(str.encode(key), content)
         if int(i) % batch_size == 0 or (
             i == len(sorted_df) - 1 and batch_write.count() > 0  # last iteration
@@ -338,9 +325,9 @@ def test_rocksdb(
         if level != 0:
             opts.compression_opts = {"level": level}
         opts.table_factory = aimrocks.BlockBasedTableFactory(block_size=block_size)
-        db_test_readonly = aimrocks.DB(db_test_path, opts, read_only=True)
+        db_test_read = aimrocks.DB(db_test_path, opts, read_only=True)
     else:
-        db_test_readonly = db_test
+        db_test_read = db_test
 
     ########################
     # measure access times #
@@ -356,12 +343,12 @@ def test_rocksdb(
     index_len = len(str(len(metadata_list)))
     for i, row in enumerate(metadata_list):
         if int(i) in queries:
-            key = make_key(order, index_len, max_size, i, row, lsh)
+            key = make_key(order, index_len, max_size, i, row)
             query_log.append(str(key))
             keys_mget.append(str.encode(key))
             # test single get
             start_sg_time = time.time()
-            got = db_test_readonly.get(str.encode(key))
+            got = db_test_read.get(str.encode(key))
             end_sg_time = time.time()
             tot_sg_time += end_sg_time - start_sg_time
             got_size += len(got)
@@ -370,7 +357,7 @@ def test_rocksdb(
         # test multi get
         if ind_query % 100 == 0 or (i == len(metadata_list) - 1 and len(keys_mget) > 0):
             start_mg_time = time.time()
-            gotlist = db_test_readonly.multi_get(keys_mget)
+            gotlist = db_test_read.multi_get(keys_mget)
             end_mg_time = time.time()
             keys_mget.clear()
             ind_query = 1
@@ -389,14 +376,14 @@ def test_rocksdb(
     # print the query log to file
     if querylog:
         with open(
-            f"query_log-{parq_size}-{PID}/{compr_str}_{bs_str}_{order}_{lsh}.json", "w"
+            f"query_log-{parq_size}-{PID}/{compr_str}_{bs_str}_{order}.json", "w"
         ) as f:
             f.write(json.dumps(query_log, indent=4))
 
     #################
     # delete the db #
     #################
-    del db_test_readonly
+    del db_test_read
     del sorted_df
     if not keep_db:
         if os.path.exists(db_test_path):
@@ -416,41 +403,37 @@ if __name__ == "__main__":
     # declare different tests
     orders = [
         # "parquet",  # standard order of the parquet file (by language)
-        "filename_boffa",
+        # "filename_boffa",
         # "filename_tosoni",
         # "tosoni_nopath",
         # "lang_filename_tos",
         # "filename_repo",
         # "repo_filename",
-        # "fingerprint",
-    ]
-    fingerprints = [
         "tlsh",
-        # "min_hash",
     ]
     compressors = [
         # (aimrocks.CompressionType.no_compression, 0),
-        (aimrocks.CompressionType.zstd_compression, 3),
-        (aimrocks.CompressionType.zstd_compression, 12),
+        # (aimrocks.CompressionType.zstd_compression, 3),
+        # (aimrocks.CompressionType.zstd_compression, 12),
         # (aimrocks.CompressionType.zstd_compression, 22),
         (aimrocks.CompressionType.zlib_compression, 6),
         # (aimrocks.CompressionType.zlib_compression, 9),
-        (aimrocks.CompressionType.snappy_compression, 0),
+        # (aimrocks.CompressionType.snappy_compression, 0),
     ]
     block_sizes = [
-        4 * KiB,
+        # 4 * KiB,
         # 8 * KiB,
-        # 16 * KiB,
+        16 * KiB,
         # 32 * KiB,
         # 64 * KiB,
         # 128 * KiB,
-        256 * KiB,
+        # 256 * KiB,
         # 512 * KiB,
         # 1 * MiB,
-        4 * MiB,
+        # 4 * MiB,
         # 10 * MiB,
     ]
-    print(f"Orderings: {orders}, fingerprints: {fingerprints}")
+    print(f"Orderings: {orders}")
     print(f"Compressors: {[get_compr_str(c) for c in compressors]}")
     print(f"Block sizes: {[get_bs_str(b) for b in block_sizes]}")
     print()
@@ -485,7 +468,7 @@ if __name__ == "__main__":
                     "hexsha": "hexsha",
                     "filename": "max_stars_repo_path",
                     # "repo": "max_stars_repo_name",
-                    "fingerprint": "content",
+                    "tlsh": "content",
                     "size": "size",
                     "lang": "lang",
                 }
@@ -493,10 +476,10 @@ if __name__ == "__main__":
             batch_list = batch.to_pylist()
             # replace content with its fingerprint
             for row in batch_list:
-                content = row["fingerprint"]
+                content = row["tlsh"]
                 size = row["size"]
                 max_size = max(max_size, size)
-                row["fingerprint"] = create_fingerprints(content, fingerprints)
+                row["tlsh"] = create_tlsh(content)
             metadata_list += batch_list
         except Exception as e:
             print(e)
@@ -535,25 +518,20 @@ if __name__ == "__main__":
     for block_size in block_sizes:
         for compr in compressors:
             test_orders = orders
-            test_fingerprints = ["no_lsh"]
             # if compr[0] == aimrocks.CompressionType.no_compression:
             #     # without compression the order and the lsh are useless
             #     test_orders = ["parquet"]
             for order in test_orders:
-                if order == "fingerprint":
-                    test_fingerprints = fingerprints
-                for lsh in test_fingerprints:
-                    test_rocksdb(
-                        txt_mmap=txt_mmap,
-                        txt_index=txt_index,
-                        metadata_list=metadata_list,
-                        compressor=compr,
-                        order=order,
-                        block_size=block_size,
-                        lsh=lsh,
-                        max_size=max_size,
-                        queries=queries,
-                    )
+                test_rocksdb(
+                    txt_mmap=txt_mmap,
+                    txt_index=txt_index,
+                    metadata_list=metadata_list,
+                    compressor=compr,
+                    order=order,
+                    block_size=block_size,
+                    max_size=max_size,
+                    queries=queries,
+                )
     print()
 
     # create histograms for the results
