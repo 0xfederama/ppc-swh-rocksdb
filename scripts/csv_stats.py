@@ -1,5 +1,4 @@
 import itertools
-from operator import itemgetter
 import os
 import time
 
