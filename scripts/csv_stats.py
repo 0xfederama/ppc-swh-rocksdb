@@ -45,8 +45,8 @@ def build_chart(x: list, y: list, xlab: str, ylab: str, name: str, loglog=False)
                         path_effects=[pe.withStroke(linewidth=4, foreground="red")],
                     )
                     print(f"Vertical line at {vline} meets plot at {inters_y}")
-                except ValueError:
-                    print(f"Value error for vline {vline}")
+                except ValueError as e:
+                    print(f"Value error for vline {vline}: {e}")
     # manage logscale
     if loglog:
         plt.yscale("log")
@@ -95,7 +95,8 @@ if __name__ == "__main__":
     with open(csv_path, "r") as f:
         next(f)
         for line in f:
-            length = line.split(",")[2]
+            splitline = line.split(",")
+            length = splitline[2]
             size = int(length)
             size_kb = round(size / KiB, 3)
             size_mb = round(size / MiB, 3)
@@ -112,6 +113,17 @@ if __name__ == "__main__":
                 sizes_count[size] = sizes_count.get(size, 0) + size
                 if size <= 32 * KiB:
                     files_count_32[size] = files_count_32.get(size, 0) + 1
+            if size >= 30 * MiB:
+                fname = splitline[5]
+                print(f"Size {size_mb} MiB: {fname}", end="")
+
+    if 4 * KiB not in files_count:
+        files_count[4 * KiB] = 1
+        sizes_count[4 * KiB] = 4 * KiB
+        files_count_32[4 * KiB] = 1
+    if 256 * KiB not in files_count:
+        files_count[256 * KiB] = 1
+        sizes_count[256 * KiB] = 256 * KiB
 
     # sort the dictionaries
     files_count = dict(sorted(files_count.items()))
