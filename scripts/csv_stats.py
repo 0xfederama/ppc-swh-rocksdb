@@ -1,4 +1,5 @@
 import itertools
+from operator import itemgetter
 import os
 import time
 
@@ -12,6 +13,8 @@ info = ""
 KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
+
+print_bigfiles = False
 
 
 def build_chart(x: list, y: list, xlab: str, ylab: str, name: str, loglog=False):
@@ -92,11 +95,14 @@ if __name__ == "__main__":
     files_count_32 = {}
     files_count = {}
     sizes_count = {}
+    bigfiles = 0
+    smallfiles = 0
     with open(csv_path, "r") as f:
         next(f)
         for line in f:
             splitline = line.split(",")
             length = splitline[2]
+            fname = splitline[5].strip()
             size = int(length)
             size_kb = round(size / KiB, 3)
             size_mb = round(size / MiB, 3)
@@ -114,8 +120,9 @@ if __name__ == "__main__":
                 if size <= 32 * KiB:
                     files_count_32[size] = files_count_32.get(size, 0) + 1
             if size >= 30 * MiB:
-                fname = splitline[5]
-                print(f"Size {size_mb} MiB: {fname}", end="")
+                if print_bigfiles:
+                    print(f"Size {size_mb} MiB: {fname}")
+                bigfiles += 1
 
     if 4 * KiB not in files_count:
         files_count[4 * KiB] = 1
@@ -150,6 +157,7 @@ if __name__ == "__main__":
     print(f"Max file size: {round(max_size / KiB, 3)} MiB")
     print(f"Average file size: {round((tot_size / KiB) / n_files, 3)} KiB")
     print(f"Number of files: {n_files}")
+    print(f"Files bigger than 30 MiB: {bigfiles}")
     print(
         f"Outliers > 32 KiB: {outliers[32][0]} ({round(outliers[32][0] * 100 / n_files, 3)} %), {round(outliers[32][1] / MiB, 3)} MiB ({round(outliers[32][1] * 100 / tot_size, 3)} %)"
     )
