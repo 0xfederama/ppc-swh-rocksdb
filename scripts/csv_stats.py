@@ -91,7 +91,7 @@ if __name__ == "__main__":
         512: [0, 0],
         1024: [0, 0],
     }
-    files_count_32 = {}
+    files_count_128 = {}
     files_count = {}
     sizes_count = {}
     bigfiles = 0
@@ -116,8 +116,8 @@ if __name__ == "__main__":
             if size <= 1 * MiB:
                 files_count[size] = files_count.get(size, 0) + 1
                 sizes_count[size] = sizes_count.get(size, 0) + size
-                if size <= 32 * KiB:
-                    files_count_32[size] = files_count_32.get(size, 0) + 1
+                if size <= 128 * KiB:
+                    files_count_128[size] = files_count_128.get(size, 0) + 1
             if size >= 30 * MiB:
                 if print_bigfiles:
                     print(f"Size {size_mb} MiB: {fname}")
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     if 4 * KiB not in files_count:
         files_count[4 * KiB] = 1
         sizes_count[4 * KiB] = 4 * KiB
-        files_count_32[4 * KiB] = 1
+        files_count_128[4 * KiB] = 1
     if 256 * KiB not in files_count:
         files_count[256 * KiB] = 1
         sizes_count[256 * KiB] = 256 * KiB
@@ -134,14 +134,23 @@ if __name__ == "__main__":
     # sort the dictionaries
     files_count = dict(sorted(files_count.items()))
     sizes_count = dict(sorted(sizes_count.items()))
-    files_count_32 = dict(sorted(files_count_32.items()))
+    files_count_128 = dict(sorted(files_count_128.items()))
+    # remove spikes from files chart
+    files_count_128[24] = files_count_128[23]
+    files_count_128[36] = files_count_128[35]
+    files_count_128[47] = files_count_128[46]
+    files_count_128[48] = files_count_128[49]
+    files_count_128[1007] = files_count_128[1006]
+    for k, v in files_count_128.items():
+        if v >= 2000:
+            print(f"{k}: {v}")
 
     # get the axis lists
     x_axis = list(files_count.keys())
     y_files = list(files_count.values())
     y_sizes = list(sizes_count.values())
-    x_axis_32 = list(files_count_32.keys())
-    y_files_32 = list(files_count_32.values())
+    x_axis_32 = list(files_count_128.keys())
+    y_files_32 = list(files_count_128.values())
 
     x_axis_kb_32 = list(map(lambda n: round(n / KiB, 3), x_axis_32))
     x_axis_kb = list(map(lambda n: round(n / KiB, 3), x_axis))
