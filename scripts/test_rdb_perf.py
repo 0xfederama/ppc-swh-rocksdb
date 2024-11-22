@@ -6,7 +6,7 @@ import os
 
 test_type = "get"  # put or get
 put_parquet_path = "/weka1/federico/the-stack/small/the-stack-10G.parquet"
-get_parquet_path = "/weka1/federico/the-stack/small/the-stack-8M.parquet"
+get_parquet_path = "/weka1/federico/the-stack/small/the-stack-8M.parquet"  # 8M 1456 rows, 64M 10367 rows
 ordered_by = "sha"  # sha or filename
 dbs_path = f"/weka1/federico/tests-tesi/mmap_vs_rdb/{ordered_by}"
 
@@ -39,12 +39,11 @@ def test_get():
     print(
         f"GET test, reading {len(df)} records taken from {get_parquet_path} from DBs in {dbs_path}, ordered by {ordered_by}"
     )
-    print(
-        "CONTENT_DB,SIZE(GiB),SINGLE_TIME/GET(s),SG_THROUGHPUT(MiB/s),MULTI_TIME/GET(s),MG_THROUGHPUT(MiB/s)"
-    )
+    print("CONTENT_DB,SIZE(GiB),SG_THROUGHPUT(MiB/s),MG_THROUGHPUT(MiB/s)")
     nqueries = len(df)
     for content_db_path in get_db_paths:
-        print(f"{content_db_path.split('/')[-1]},", end="", flush=True)
+        db_name = content_db_path.split("/")[-1]
+        print(f"{db_name},", end="", flush=True)
         # get db size
         tot_db_size = 0
         for dirpath, _, filenames in os.walk(content_db_path):
@@ -55,12 +54,28 @@ def test_get():
                     tot_db_size += fsize
         print(f"{round(tot_db_size / GiB, 2)},", end="", flush=True)
         opts = aimrocks.Options()
-        opts.max_open_files = 40000
+        # opts.max_open_files = 40000
         opts.create_if_missing = False
         opts.allow_mmap_reads = True
         opts.paranoid_checks = False
         opts.use_adaptive_mutex = True
+
+        # compression and block
+        compr = db_name.split("_")[1]
+        block_size = int(db_name.split("_")[2][:-1]) * KiB
+        match compr:
+            case "nocomp":
+                opts.compression = aimrocks.CompressionType.no_compression
+            case "zlib":
+                opts.compression = aimrocks.CompressionType.zlib_compression
+            case "zstd":
+                opts.compression = aimrocks.CompressionType.zstd_compression
+            case "snappy":
+                opts.compression = aimrocks.CompressionType.snappy_compression
+
+        opts.table_factory = aimrocks.BlockBasedTableFactory(block_size=block_size)
         contents_db = aimrocks.DB(content_db_path, opts, read_only=True)
+
         tot_sg_time = 0
         tot_mg_time = 0
         tot_get_size = 0
@@ -84,7 +99,7 @@ def test_get():
             tot_get_size += len(got)
             found_sg += sum(x is not None for x in [got])
             tot_sg_time += get_end - get_start
-            if i % 1000 == 0 or (i == len(df) - 1 and len(keys_mget) > 0):
+            if i % 100 == 0 or (i == len(df) - 1 and len(keys_mget) > 0):
                 get_start = time.time()
                 gotlist = contents_db.multi_get(keys_mget)
                 get_end = time.time()
@@ -94,7 +109,7 @@ def test_get():
                 found_mg += sum(x is not None for x in gotlist)
         total_get_size_mb = tot_get_size / MiB
         print(
-            f"{round(tot_sg_time/len(df), 5)},{round(total_get_size_mb / tot_sg_time, 3)},",
+            f"{round(total_get_size_mb / tot_sg_time, 3)},",
             end="",
         )
         if found_sg != nqueries:
@@ -102,7 +117,7 @@ def test_get():
         if not (found_sg == found_mg):
             print(f"\nERROR: found numbers differ: {found_sg}, {found_mg}")
         print(
-            f"{round(tot_mg_time/len(df), 5)},{round(total_get_size_mb / tot_mg_time, 3)},{n_mget} #mget",
+            f"{round(total_get_size_mb / tot_mg_time, 3)},{n_mget} #mget",
         )
 
 

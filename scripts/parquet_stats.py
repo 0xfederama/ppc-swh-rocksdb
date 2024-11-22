@@ -6,12 +6,14 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 from pyarrow.parquet import ParquetFile
 
-parq_size = "dedup_v1"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+parq_size = "200G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
 small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
-parquet_path = small_parq_path if "dedup_v1" not in parq_size else full_parq_path
+parquet_path = small_parq_path if "v1" not in parq_size else full_parq_path
+if parq_size == "200G":
+    parquet_path = "/weka1/federico/boffa-200G-py/dataset.parquet"
 charts_dir = "charts"
-print_bigfiles = True
+print_bigfiles = False
 info = ""
 KiB = 1024
 MiB = 1024 * 1024
@@ -92,6 +94,8 @@ if __name__ == "__main__":
     max_size_lang = None
     n_files = 0
     outliers = {  # pairs of num_files, size
+        4: [0, 0],
+        16: [0, 0],
         32: [0, 0],
         64: [0, 0],
         128: [0, 0],
@@ -125,7 +129,7 @@ if __name__ == "__main__":
                 lang_maxsizes[lang] = size
             n_files += 1
             tot_size += size
-            sizes = [32, 64, 128, 256, 512, 1024]
+            sizes = [4, 16, 32, 64, 128, 256, 512, 1024]
             for s in sizes:
                 if size > s * KiB:
                     outliers[s][0] += 1
@@ -177,6 +181,12 @@ if __name__ == "__main__":
     print(f"Average file size: {round((tot_size / KiB) / n_files, 3)} KiB")
     print(f"Number of files: {n_files}")
     print(
+        f"Outliers > 4 KiB: {outliers[4][0]} ({round(outliers[4][0] * 100 / n_files, 3)} %), {round(outliers[4][1] / MiB, 3)} MiB ({round(outliers[4][1] * 100 / tot_size, 3)} %)"
+    )
+    print(
+        f"Outliers > 16 KiB: {outliers[16][0]} ({round(outliers[16][0] * 100 / n_files, 3)} %), {round(outliers[16][1] / MiB, 3)} MiB ({round(outliers[16][1] * 100 / tot_size, 3)} %)"
+    )
+    print(
         f"Outliers > 32 KiB: {outliers[32][0]} ({round(outliers[32][0] * 100 / n_files, 3)} %), {round(outliers[32][1] / MiB, 3)} MiB ({round(outliers[32][1] * 100 / tot_size, 3)} %)"
     )
     print(
@@ -196,6 +206,7 @@ if __name__ == "__main__":
     )
     print()
 
+    exit()
     os.mkdir(charts_dir)
     with open(f"{charts_dir}/info.txt", "w") as f:
         f.write(f"{parquet_path}\n{info}")
@@ -268,7 +279,7 @@ if __name__ == "__main__":
             f"{lang}: {nfiles} files, {langsize_gb} GiB, {avg_kb} KiB avg size, {max_kb} MiB max size"
         )
         i += 1
-        biglangs = ["Jupyter Notebook", "CSV"]  # , "JSON"]
+        biglangs = ["Jupyter Notebook", "CSV", "HTML"]  # , "JSON"]
         if lang not in biglangs:
             smalllang[lang] = lang_all_sizes[lang]
         else:
@@ -287,7 +298,7 @@ if __name__ == "__main__":
     print(f"\nGraph {name} created")
 
     name = "lang_boxplot_big"
-    if biglangs != {}:
+    if biglang != {}:
         x = list(biglang.keys())
         y = list(biglang.values())
         plt.figure(figsize=(16, 9))

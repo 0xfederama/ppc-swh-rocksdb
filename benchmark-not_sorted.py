@@ -16,7 +16,7 @@ readonly = False  # True to close db and reopen in readonly, False to skip it
 drive_type = "HDD"  # HDD to test on HDD, SSD to test on SSD
 n_queries = 50000  # number of queries to make on the dbs to test their throughput
 
-parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
+parq_size = "200G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
 
 small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
 full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
@@ -346,36 +346,37 @@ if __name__ == "__main__":
     print(f"Hostname: {os.uname()[1]}")
     print(f"Putting temp RocksDBs in {tmp_test_path}")
     print(f"Dataset {parq_path}, size {round(parq_size_b / MiB, 3)} MiB")
+    print(f"Number of queries: {n_queries}")
     print()
 
     # declare different tests
     orders = [
         # "parquet",  # standard order of the parquet file (by language)
-        "filename_boffa",
+        # "filename_boffa",
         # "filename_tosoni",
-        # "tosoni_nopath",
+        "tosoni_nopath",
         # "filename_repo",
         # "repo_filename",
         # "lang_filename_tos",
-        "tlsh",
+        # "tlsh",
     ]
     # define compressors and block sizes
     compressors = [
         # (aimrocks.CompressionType.no_compression, 0),
-        # (aimrocks.CompressionType.zstd_compression, 3),
-        # (aimrocks.CompressionType.zstd_compression, 12),
+        (aimrocks.CompressionType.zstd_compression, 3),
+        (aimrocks.CompressionType.zstd_compression, 12),
         # (aimrocks.CompressionType.zstd_compression, 22),
         (aimrocks.CompressionType.zlib_compression, 6),
         # (aimrocks.CompressionType.zlib_compression, 9),
-        # (aimrocks.CompressionType.snappy_compression, 0),
+        (aimrocks.CompressionType.snappy_compression, 0),
     ]
     block_sizes = [
-        4 * KiB,
+        # 4 * KiB,
         # 8 * KiB,
         16 * KiB,
         # 32 * KiB,
         # 64 * KiB,
-        # 128 * KiB,
+        128 * KiB,
         # 256 * KiB,
         # 512 * KiB,
         # 1 * MiB,

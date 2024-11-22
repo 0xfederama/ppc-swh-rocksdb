@@ -15,7 +15,7 @@ make_charts = False  # True to create charts, False to skip it
 keep_db = False  # True to delete the test dbs, False to skip it
 readonly = False  # True to close db and reopen in readonly, False to skip it
 drive_type = "HDD"  # HDD to test on HDD, SSD to test on SSD
-n_queries = 50000  # number of queries to make on the dbs to test their throughput
+n_queries = 10000  # number of queries to make on the dbs to test their throughput
 
 parq_size = "10G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
 
@@ -26,8 +26,8 @@ if parq_size == "200G":
     parq_path = "/weka1/federico/boffa-200G-py/dataset.parquet"
 parq_size_b = os.path.getsize(parq_path)
 
-txt_contents_path = "/weka1/federico/the-stack/the-stack-v1-contents.txt"
-txt_index_path = "/weka1/federico/the-stack/the-stack-v1-contents-index.json"
+txt_contents_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents.txt"
+txt_index_path = "/weka1/federico/the-stack/the-stack-dedup_v1-contents-index.json"
 if parq_size == "200G":
     txt_contents_path = "/weka1/federico/boffa-200G-py/contents.txt"
     txt_index_path = "/weka1/federico/boffa-200G-py/contents-index.json"
@@ -232,8 +232,6 @@ def test_rocksdb(
     opts.allow_mmap_reads = True
     opts.paranoid_checks = False
     opts.use_adaptive_mutex = True
-    # options to try to make db smaller
-    # opts.compression_opts["max_dict_bytes"] = 1 * GiB
     # compression and block
     opts.compression = compr
     if level != 0:
@@ -306,11 +304,12 @@ def test_rocksdb(
             except Exception as e:
                 print(e)
     compr_ratio = round((tot_db_size * 100) / parq_size_b, 2)
+    compr_ratio_ssts = round((tot_sst_size * 100) / parq_size_b, 2)
     avg_sst_size_mb = (
         round((tot_sst_size / MiB) / tot_sst_files, 2) if tot_sst_files != 0 else 0
     )
     results["compr_ratio"][bs_str][compr_str] = compr_ratio
-    print(f"{compr_ratio},{avg_sst_size_mb},", end="")
+    print(f"{compr_ratio} ({compr_ratio_ssts} no logs),{avg_sst_size_mb},", end="")
 
     ### Close the DB and reopen it
     if readonly:
@@ -398,18 +397,20 @@ if __name__ == "__main__":
     print(f"Content txt in {txt_contents_path}")
     print(f"Putting temp RocksDBs in {tmp_test_path}")
     print(f"Dataset {parq_path}, size {round(parq_size_b / MiB, 3)} MiB")
+    print(f"Number of queries: {n_queries}")
+    print(f"Read only: {readonly}")
     print()
 
     # declare different tests
     orders = [
         # "parquet",  # standard order of the parquet file (by language)
-        # "filename_boffa",
+        "filename_boffa",
         # "filename_tosoni",
         # "tosoni_nopath",
         # "lang_filename_tos",
         # "filename_repo",
         # "repo_filename",
-        "tlsh",
+        # "tlsh",
     ]
     compressors = [
         # (aimrocks.CompressionType.no_compression, 0),
@@ -421,12 +422,12 @@ if __name__ == "__main__":
         # (aimrocks.CompressionType.snappy_compression, 0),
     ]
     block_sizes = [
-        # 4 * KiB,
+        4 * KiB,
         # 8 * KiB,
         16 * KiB,
         # 32 * KiB,
-        # 64 * KiB,
-        # 128 * KiB,
+        64 * KiB,
+        128 * KiB,
         # 256 * KiB,
         # 512 * KiB,
         # 1 * MiB,
