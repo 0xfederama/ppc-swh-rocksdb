@@ -13,7 +13,7 @@ import config
 
 querylog = False  # True to output queries to file, False to skip it
 make_charts = False  # True to create charts, False to skip it
-keep_db = True  # True to delete the test dbs, False to skip it
+keep_db = False  # True to delete the test dbs, False to skip it
 readonly = False  # True to close db and reopen in readonly, False to skip it
 n_queries = 10000  # number of queries to make on the dbs to test their throughput
 
@@ -193,9 +193,9 @@ def test_rocksdb(
         batch = batch.rename_columns(
             {
                 "hexsha": "hexsha",
-                "filename": "max_stars_repo_path",
-                # "repo": "max_stars_repo_name",
-                "tlsh": "content",
+                "max_stars_repo_path": "filename",
+                # "max_stars_repo_name": "repo",
+                "content": "tlsh",
                 "size": "size",
                 "lang": "lang",
             }
@@ -305,9 +305,7 @@ def test_rocksdb(
     print(f"{round(sg_thr, 2)},{round(mg_thr, 2)}")
     # print the query log to file
     if querylog:
-        with open(
-            f"query_log-{PID}/{compr_str}_{bs_str}_{order}.json", "w"
-        ) as f:
+        with open(f"query_log-{PID}/{compr_str}_{bs_str}_{order}.json", "w") as f:
             f.write(json.dumps(query_log, indent=4))
 
     #################

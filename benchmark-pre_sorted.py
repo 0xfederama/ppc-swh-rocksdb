@@ -204,9 +204,7 @@ def test_rocksdb(
     ######################
     compr = compressor[0]
     level = compressor[1]
-    db_test_path = (
-        f"{config.rocksdb_output_path}db_{str(compr)}_{str(block_size)}_{int(time.time())}"
-    )
+    db_test_path = f"{config.rocksdb_output_path}db_{str(compr)}_{str(block_size)}_{int(time.time())}"
     opts = aimrocks.Options()
     opts.create_if_missing = True
     opts.error_if_exists = True
@@ -414,9 +412,9 @@ if __name__ == "__main__":
             batch = batch.rename_columns(
                 {
                     "hexsha": "hexsha",
-                    "filename": "max_stars_repo_path",
-                    # "repo": "max_stars_repo_name",
-                    "tlsh": "content",
+                    "max_stars_repo_path": "filename",
+                    # "max_stars_repo_name": "repo",
+                    "content": "tlsh",
                     "size": "size",
                     "lang": "lang",
                 }
