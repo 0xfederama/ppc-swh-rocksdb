@@ -5,10 +5,10 @@ This repo contains the Python code used to test the Permute-Partition-Compress p
 The benchmark architecture is the following. At the beginning we read the entire the-stack parquet (without the content of the files) and produce  a pandas dataframe, that we will sort differently based on predefined functions. Than, for each element in the sorted dataframe, we get the content of the file from the contents txt and, after accurately creating the related key, we insert it in a RocksDB. ![benchmark architecture](utils/benchmark_architecture.png)
 
 The repository is structured as follows:
-- `benchmark-pre_sorted.py` and `benchmark-not_sorted.py` are the benchmarks written in python
-- `create_contents.py` is an auxiliary files needed to setup the environment
-- `scripts/` contains the files needed for testing smaller things that we used in the development process and may still provide useful for future use
-- `utils/` contains some utility files, like the toy ones used for basic testing
+- `benchmark-pre_sorted.py` and `benchmark-not_sorted.py` are the benchmarks written in python;
+- `create_contents.py` is an auxiliary files needed to setup the environment;
+- `scripts/` contains the files needed for testing smaller things that we used in the development process and may still provide useful for future use;
+- `utils/` contains some utility files that we will see later, other than the `testing/` directory with scripts that we used to test the feasibility and performance of our solution.
 
 The entire code is tested with Python version 3.11.9, but may be executed also with 3.10.
 
@@ -40,17 +40,11 @@ pip install -r requirements.txt
 On the machine we used, everything should already be setup for the usage and only the things specified above are necessary. Otherwise, follow the next section. If you want to just run the toy example we provide, with files inside the `utils/` directory, you can just run `python3 benchmark-not_sorted.py` or `python3 benchmark-pre_sorted.py` without installing anything.
 
 ### Download the datasets
-The benchmark can be executed on any Parquet file with at least these columns: `["hexsha", "max_stars_repo_path", "max_stars_repo_name", "content", "size", "lang"]`. As we did ourselves, it's very easy to remodel a dataset to execute it with our benchmarks, simply renaming the Parquet columns is necessary. Otherwise, to download a ready-made dataset like [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), you can follow HuggingFace's guide to install the dataset and export it to Parquet. For information, the code is the following, but be sure to download the proper libraries for HuggingFace:
-```python
-from datasets import load_dataset
-
-dataset = load_dataset("bigcode/the-stack-dedup")
-dataset.to_parquet("path/to/file.parquet")
-```
+The benchmark can be executed on any Parquet file with at least these columns: `["hexsha", "max_stars_repo_path", "max_stars_repo_name", "content", "size", "lang"]`. As we did ourselves, it's very easy to remodel a dataset to execute it with our benchmarks, simply renaming the Parquet columns is necessary. Otherwise, to download a ready-made dataset like [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), you can follow HuggingFace's guide to install the dataset and export it to Parquet. Anyway, in `scripts/download_from_hf.py` you will find the code to download the The Stack dedup dataset, in which you can simply customize the paths and run the code.
 
 **If you only aim to test `benchmark-not_sorted.py`, you can skip this next part.**
 
-After downloading the dataset, you need to create two auxiliary files: `contents.txt` and `contents-index.json`. The former contains the contents of all the files of the dataset, and the second one is its index with starting and ending positions to get the specific file contents. These files are as big as the datasets, but are needed only with the `benchmark-pre_sorted.py`, in which we cannot sort the entire dataframe, contents included. The two files can be created simply by running `python3 create_contents.py`, changing the paths with yours in the first lines of the file.
+After downloading the dataset, you need to create two auxiliary files: `contents.txt` and `contents-index.json`. The former contains the contents of all the files of the dataset, and the second one is its index with starting and ending positions to get the specific file contents. These files are as big as the datasets, but are needed only with the `benchmark-pre_sorted.py`, in which we cannot sort the entire dataframe, contents included. The two files can be created simply by running `python3 scripts/create_contents.py`, replacing the paths with yours in the first lines of the file.
 
 At this point, you should have everything set up and ready to run the benchmark.
 
