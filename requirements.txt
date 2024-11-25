@@ -5,5 +5,5 @@ pandas
 python-magic
 py-tlsh
 aimrocks
-pyarrow
+pyarrow==18.0.0
 python-snappy
