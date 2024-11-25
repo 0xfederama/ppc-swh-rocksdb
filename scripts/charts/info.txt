@@ -1,1 +1,0 @@
-/disk2/data/the-stack/the-stack-dedup_v1.parquet

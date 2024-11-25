@@ -8,6 +8,7 @@
 charts_benchmark*
 exp*
 ignore
+config_optane.py
 
 # Ignore util.md
 util.md

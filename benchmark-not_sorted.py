@@ -9,35 +9,15 @@ import numpy as np
 import pyarrow.parquet as pq
 import tlsh
 
+import config
+
 querylog = False  # True to output queries to file, False to skip it
 make_charts = False  # True to create charts, False to skip it
-keep_db = False  # True to delete the test dbs, False to skip it
+keep_db = True  # True to delete the test dbs, False to skip it
 readonly = False  # True to close db and reopen in readonly, False to skip it
-drive_type = "HDD"  # HDD to test on HDD, SSD to test on SSD
-n_queries = 50000  # number of queries to make on the dbs to test their throughput
+n_queries = 10000  # number of queries to make on the dbs to test their throughput
 
-parq_size = "200G"  # 5rec, 1M, 8M, 64M, 256M, 1G, 4G, 10G, 200G, dedup_v1, 1G_minsize_4M, 2G_minsize_1M, 10G_minsize_1012K, 24G_minsize_990K
-
-small_parq_path = "/weka1/federico/the-stack/small/the-stack-" + parq_size + ".parquet"
-full_parq_path = "/weka1/federico/the-stack/the-stack-" + parq_size + "-zstd.parquet"
-parq_path = small_parq_path if "v1" not in parq_size else full_parq_path
-if parq_size == "200G":
-    parq_path = "/weka1/federico/boffa-200G-py/dataset.parquet"
-parq_size_b = os.path.getsize(parq_path)
-
-txt_contents_path = "/weka1/federico/the-stack/the-stack-v1-contents.txt"
-txt_index_path = "/weka1/federico/the-stack/the-stack-v1-contents-index.json"
-if parq_size == "200G":
-    txt_contents_path = "/weka1/federico/boffa-200G-py/contents.txt"
-    txt_index_path = "/weka1/federico/boffa-200G-py/contents-index.json"
-
-if drive_type == "HDD":
-    tmp_test_path = "/weka1/federico/db/tmp/"
-elif drive_type == "SSD":
-    tmp_test_path = "/nvme/f.ramacciotti/tmp/"
-else:
-    print("Drive type must be either HDD or SSD")
-    exit()
+parq_size_b = os.path.getsize(config.parquet_path)
 
 KiB = 1024
 MiB = 1024 * 1024
@@ -169,7 +149,7 @@ def test_rocksdb(
     ######################
     compr = compressor[0]
     level = compressor[1]
-    db_test_path = f"{tmp_test_path}db_{parq_size}_{str(compr)}_{str(block_size)}_{int(time.time())}"
+    db_test_path = f"{config.rocksdb_output_path}db_{str(compr)}_{str(block_size)}_{int(time.time())}"
     opts = aimrocks.Options()
     opts.create_if_missing = True
     opts.error_if_exists = True
@@ -198,7 +178,7 @@ def test_rocksdb(
     ins_size = 0
     index_parq = 0
     query_log = []
-    parquet_file = pq.ParquetFile(parq_path)
+    parquet_file = pq.ParquetFile(config.parquet_path)
     batch_write = aimrocks.WriteBatch()
     for batch in parquet_file.iter_batches(
         columns=[
@@ -326,7 +306,7 @@ def test_rocksdb(
     # print the query log to file
     if querylog:
         with open(
-            f"query_log-{parq_size}-{PID}/{compr_str}_{bs_str}_{order}.json", "w"
+            f"query_log-{PID}/{compr_str}_{bs_str}_{order}.json", "w"
         ) as f:
             f.write(json.dumps(query_log, indent=4))
 
@@ -344,66 +324,31 @@ if __name__ == "__main__":
     print(f"PID: {PID}")
     print(f"User: {os.getlogin()}")
     print(f"Hostname: {os.uname()[1]}")
-    print(f"Putting temp RocksDBs in {tmp_test_path}")
-    print(f"Dataset {parq_path}, size {round(parq_size_b / MiB, 3)} MiB")
+    print(f"Putting temp RocksDBs in {config.rocksdb_output_path}")
+    print(f"Dataset {config.parquet_path}, size {round(parq_size_b / MiB, 3)} MiB")
     print(f"Number of queries: {n_queries}")
     print()
 
-    # declare different tests
-    orders = [
-        # "parquet",  # standard order of the parquet file (by language)
-        # "rev-filename",
-        # "ext-filename",
-        "ext-filename-nopath",
-        # "filename_repo",
-        # "repo_filename",
-        # "lang-ext-filename",
-        # "tlsh",
-    ]
-    # define compressors and block sizes
-    compressors = [
-        # (aimrocks.CompressionType.no_compression, 0),
-        (aimrocks.CompressionType.zstd_compression, 3),
-        (aimrocks.CompressionType.zstd_compression, 12),
-        # (aimrocks.CompressionType.zstd_compression, 22),
-        (aimrocks.CompressionType.zlib_compression, 6),
-        # (aimrocks.CompressionType.zlib_compression, 9),
-        (aimrocks.CompressionType.snappy_compression, 0),
-    ]
-    block_sizes = [
-        # 4 * KiB,
-        # 8 * KiB,
-        16 * KiB,
-        # 32 * KiB,
-        # 64 * KiB,
-        128 * KiB,
-        # 256 * KiB,
-        # 512 * KiB,
-        # 1 * MiB,
-        # 4 * MiB,
-        # 10 * MiB,
-    ]
-
-    print(f"Orderings: {orders}")
-    print(f"Compressors: {[get_compr_str(c) for c in compressors]}")
-    print(f"Block sizes: {[get_bs_str(b) for b in block_sizes]}")
+    print(f"Orderings: {config.orders}")
+    print(f"Compressors: {[get_compr_str(c) for c in config.compressors]}")
+    print(f"Block sizes: {[get_bs_str(b) for b in config.block_sizes]}")
     print()
 
     # setup histogram results dictionary
     for m in metrics:
         results[m] = {}
-        for b in block_sizes:
+        for b in config.block_sizes:
             bs_str = get_bs_str(b)
             if bs_str not in results[m]:
                 results[m][bs_str] = {}
-            for c in compressors:
+            for c in config.compressors:
                 c_str = get_compr_str(c)
                 results[m][bs_str][c_str] = 0
     x_compr = list(next(iter(results["compr_ratio"].values())).keys())
     x_blocksizes = list(results["compr_ratio"].keys())
 
     # get max_size and max_index
-    table = pq.read_table(parq_path, columns=["size"])
+    table = pq.read_table(config.parquet_path, columns=["size"])
     table_len = table.num_rows
     index_len = len(str(table_len))
     max_size = 0
@@ -414,7 +359,7 @@ if __name__ == "__main__":
 
     # create query log directory
     if querylog:
-        os.makedirs(f"query_log-{parq_size}-{PID}")
+        os.makedirs(f"query_log-{PID}")
 
     # create queries list
     if n_queries == 0 or n_queries > table_len:
@@ -425,12 +370,9 @@ if __name__ == "__main__":
         "BLOCK_SIZE(KiB),COMPRESSION,ORDER,INSERT_THROUGHPUT(MiB/s),COMPRESSION_RATIO(%),AVG_SST_FILE_SIZE(MiB),SINGLE_GET_THROUGHPUT(MiB/s),MULTI_GET_THROUGHPUT(MiB/S)"
     )
     # run tests
-    for block_size in block_sizes:
-        for compr in compressors:
-            test_orders = orders
-            # if compr[0] == aimrocks.CompressionType.no_compression:
-            #     # without compression the order and the lsh are useless
-            #     test_orders = ["parquet"]
+    for block_size in config.block_sizes:
+        for compr in config.compressors:
+            test_orders = config.orders
             for order in test_orders:
                 test_rocksdb(
                     compressor=compr,
@@ -445,7 +387,7 @@ if __name__ == "__main__":
 
     # create histograms for the results
     if make_charts:
-        charts_dir = f"charts_benchmark-{parq_size}-{PID}"
+        charts_dir = f"charts_benchmark-{PID}"
         os.makedirs(charts_dir)
         for m in metrics:
             x = np.arange(len(x_compr))
