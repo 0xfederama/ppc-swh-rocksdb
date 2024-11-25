@@ -1,12 +1,9 @@
 datasketch
 GitPython
-magika
 matplotlib
 pandas
 python-magic
 py-tlsh
-simhash
-spookyhash
 aimrocks
 pyarrow
 python-snappy
