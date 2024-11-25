@@ -206,7 +206,6 @@ if __name__ == "__main__":
     )
     print()
 
-    exit()
     os.mkdir(charts_dir)
     with open(f"{charts_dir}/info.txt", "w") as f:
         f.write(f"{parquet_path}\n{info}")
