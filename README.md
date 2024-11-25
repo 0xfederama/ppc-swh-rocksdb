@@ -37,7 +37,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-On the machine we used, everything should already be setup for the usage and only the things specified above are necessary. Otherwise, follow the next section. If you want to just run the toy example we provide, with files inside the `utils/` directory, you can just run `python3 benchmark-not_sorted.py` or `python3 benchmark-pre_sorted.py` without installing enything.
+On the machine we used, everything should already be setup for the usage and only the things specified above are necessary. Otherwise, follow the next section. If you want to just run the toy example we provide, with files inside the `utils/` directory, you can just run `python3 benchmark-not_sorted.py` or `python3 benchmark-pre_sorted.py` without installing anything.
 
 ### Download the datasets
 The benchmark can be executed on any Parquet file with at least these columns: `["hexsha", "max_stars_repo_path", "max_stars_repo_name", "content", "size", "lang"]`. As we did ourselves, it's very easy to remodel a dataset to execute it with our benchmarks, simply renaming the Parquet columns is necessary. Otherwise, to download a ready-made dataset like [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), you can follow HuggingFace's guide to install the dataset and export it to Parquet. For information, the code is the following, but be sure to download the proper libraries for HuggingFace:
