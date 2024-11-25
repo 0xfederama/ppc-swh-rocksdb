@@ -71,28 +71,28 @@ def make_key(order, index_len, max_size, i, row):
         case "parquet":
             index = str(i).zfill(index_len)
             key = index + "-" + sha
-        case "filename_boffa":
+        case "rev-filename":
             size_len = len(str(max_size))
             size = str(row["size"]).zfill(size_len)
             filename = str(row["filename"])
             if filename is None:
                 filename = ""
             key = filename[::-1] + "_" + size + "-" + sha
-        case "filename_tosoni":
+        case "ext-filename":
             size_len = len(str(max_size))
             size = str(row["size"]).zfill(size_len)
             filename = str(row["filename"])
             if filename is None:
                 filename = ""
             key = reverse_filename_tosoni(filename) + "_" + size + "-" + sha
-        case "tosoni_nopath":
+        case "ext-filename-nopath":
             size_len = len(str(max_size))
             size = str(row["size"]).zfill(size_len)
             filename = str(row["filename"])
             if filename is None:
                 filename = ""
             key = reverse_filename_tosoni_nopath(filename) + "_" + size + "-" + sha
-        case "lang_filename_tos":
+        case "lang-ext-filename":
             key = (
                 str(row["lang"])
                 + "-"
@@ -352,12 +352,12 @@ if __name__ == "__main__":
     # declare different tests
     orders = [
         # "parquet",  # standard order of the parquet file (by language)
-        # "filename_boffa",
-        # "filename_tosoni",
-        "tosoni_nopath",
+        # "rev-filename",
+        # "ext-filename",
+        "ext-filename-nopath",
         # "filename_repo",
         # "repo_filename",
-        # "lang_filename_tos",
+        # "lang-ext-filename",
         # "tlsh",
     ]
     # define compressors and block sizes

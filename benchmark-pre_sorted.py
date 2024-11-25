@@ -72,28 +72,28 @@ def make_key(order, index_len, max_size, i, row):
         case "parquet":
             index = str(i).zfill(index_len)
             key = index + "-" + sha
-        case "filename_boffa":
+        case "rev-filename":
             size_len = len(str(max_size))
             size = str(row["size"]).zfill(size_len)
             filename = str(row["filename"])
             if filename is None:
                 filename = ""
             key = filename[::-1] + "_" + size + "-" + sha
-        case "filename_tosoni":
+        case "ext-filename":
             size_len = len(str(max_size))
             size = str(row["size"]).zfill(size_len)
             filename = str(row["filename"])
             if filename is None:
                 filename = ""
             key = reverse_filename_tosoni(filename) + "_" + size + "-" + sha
-        case "tosoni_nopath":
+        case "ext-filename-nopath":
             size_len = len(str(max_size))
             size = str(row["size"]).zfill(size_len)
             filename = str(row["filename"])
             if filename is None:
                 filename = ""
             key = reverse_filename_tosoni_nopath(filename) + "_" + size + "-" + sha
-        case "lang_filename_tos":
+        case "lang-ext-filename":
             key = (
                 str(row["lang"])
                 + "-"
@@ -160,14 +160,14 @@ def sort_df(data: list[dict], order: str):
     sorted_data = data[:]
     if order != "parquet":
         match order:
-            case "filename_boffa":
+            case "rev-filename":
                 sorted_data.sort(
                     key=lambda x: (
                         x["filename"][::-1] if x["filename"] != None else "",
                         -x["size"],
                     )
                 )
-            case "filename_tosoni":
+            case "ext-filename":
                 sorted_data.sort(
                     key=lambda x: (
                         (
@@ -178,7 +178,7 @@ def sort_df(data: list[dict], order: str):
                         -x["size"],
                     )
                 )
-            case "tosoni_nopath":
+            case "ext-filename-nopath":
                 sorted_data.sort(
                     key=lambda x: (
                         (
@@ -189,7 +189,7 @@ def sort_df(data: list[dict], order: str):
                         -x["size"],
                     ),
                 )
-            case "lang_filename_tos":
+            case "lang-ext-filename":
                 sorted_data.sort(
                     key=lambda x: (
                         x["lang"],
@@ -404,10 +404,10 @@ if __name__ == "__main__":
     # declare different tests
     orders = [
         # "parquet",  # standard order of the parquet file (by language)
-        "filename_boffa",
-        # "filename_tosoni",
-        # "tosoni_nopath",
-        # "lang_filename_tos",
+        "rev-filename",
+        # "ext-filename",
+        # "ext-filename-nopath",
+        # "lang-ext-filename",
         # "filename_repo",
         # "repo_filename",
         # "tlsh",
