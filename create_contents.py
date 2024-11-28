@@ -10,9 +10,9 @@ GiB = 1024 * 1024 * 1024
 
 txt_size = float("inf")
 
-parquet_path = "/path/to/repo/utils/the-stack-64M.parquet"
-contents_path = f"/path/to/repo/utils/the-stack-64M-contents.txt"
-contents_index_path = f"/path/to/repo/utils/the-stack-64M-contents-index.json"
+parquet_path = "/path/to/repo/data/the-stack-64M.parquet"
+contents_path = f"/path/to/repo/data/the-stack-64M-contents.txt"
+contents_index_path = f"/path/to/repo/data/the-stack-64M-contents-index.json"
 
 if __name__ == "__main__":
     print(f"Starting at {time.asctime()}")

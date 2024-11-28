@@ -6,8 +6,6 @@ The base of the benchmark, shared between the two benchmarks `benchmark-not_sort
 - `benchmark-not_sorted.py` doesn't pre-sort the keys before inserting into the database: we read the parquet and, for each row, we create the key-value pair and write it directly into RocksDB, relying on the storage engine to maintain key order. We don't need additional files to execute this benchmark.
 - `benchmark-pre_sorted.py` pre-sorts the keys before insertion: we read the parquet file into a pandas dataframe, we sort it and we later insert the key-value pairs in RocksDB. In this way, we force the order on RocksDB by giving it pre-ordered data. Given the size of the datasets, we cannot sort the entire dataframe in memory, and we need to rely on mmap to read the file contents from another file. For this purpose, as we specify in the "Setup additional files" section of this README, we use `create_contents.py`.
 
-<!-- ![benchmark architecture](utils/benchmark_architecture.png) -->
-
 ### Repository structure
 
 The repository is structured as follows:
@@ -15,9 +13,8 @@ The repository is structured as follows:
 - `config.py`: configuration options to be used in the benchmarks: block size, compressor, order and file paths.
 - `create_contents.py`: support script to create auxiliary files needed by the experiments
 - `scripts/`: contains smaller testing scripts we used during development, and the script `download_from_hf.py` to download the dataset from HuggingFace.
-- `utils/`: contains an example parquet (for a toy execution of our benchmarks) and you can use this directory for testing purposes, as we will see later.
-- `example/`: contains an example library, with a `lib.py` file implementing a library for `benchmark-not_sorted.py` and a `main.py` script using it. 
-- `mergesort-lsh`: ...
+- `data/`: contains an example parquet (for a toy execution of our benchmarks) and you can use this directory for testing purposes, as we will see later.
+- `example/`: contains an example library, with a `lib.py` file implementing a library for `benchmark-not_sorted.py` and a `main.py` script using it.
 
 We executed our entire codebase using Python 3.11.9; a minimum of 3.10 is required.
 
@@ -45,12 +42,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-This repository includes a small toy dataset located in the `utils` folder, for fast experiments. The default testing dataset is `utils/the-stack-64M.parquet`, as specified in `config.py`, and you can skip the "Download the datasets" section.
+This repository includes a small toy dataset located in the `data` folder, for fast experiments. The default testing dataset is `data/the-stack-64M.parquet`, as specified in `config.py`, and you can skip the "Download the datasets" section.
 
 ### Download the datasets
 To download a ready-made dataset like [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), follow Hugging Face's guide to install the dataset and export it to Parquet. In `scripts/download_from_hf.py`, you'll find code to download The Stack dedup dataset; customize the paths and run the code. Any parquet file containing at least the columns `["hexsha", "max_stars_repo_path", "max_stars_repo_name", "content", "size", "lang"]` is eligible for testing with this repository.
 
-In order to execute a toy experiment with our codebase, we already provide a pre-downloaded Parquet file, `utils/the-stack-64M.parquet`, comprising a subset the first 64 MiB from The Stack v1 dedup.
+In order to execute a toy experiment with our codebase, we already provide a pre-downloaded Parquet file, `data/the-stack-64M.parquet`, comprising a subset the first 64 MiB from The Stack v1 dedup.
 
 ### Setup additional files
 If you aim to only run `benchmark-not_sorted.py`, you can skip this part.
