@@ -16,6 +16,7 @@ The repository is structured as follows:
 - `create_contents.py`: support script to create auxiliary files needed by the experiments
 - `scripts/`: contains smaller testing scripts we used during development, and the script `download_from_hf.py` to download the dataset from HuggingFace.
 - `utils/`: contains an example parquet (for a toy execution of our benchmarks) and you can use this directory for testing purposes, as we will see later.
+- `example/`: contains an example library, with a `lib.py` file implementing a library for `benchmark-not_sorted.py` and a `main.py` script using it. 
 - `mergesort-lsh`: ...
 
 We executed our entire codebase using Python 3.11.9; a minimum of 3.10 is required.
