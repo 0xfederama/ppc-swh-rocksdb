@@ -4,9 +4,9 @@ KiB = 1024
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
 
-parquet_path = "utils/the-stack-8M.parquet"
-contents_path = "utils/the-stack-8M-contents.txt"
-contents_index_path = "utils/the-stack-8M-contents-index.json"
+parquet_path = "utils/the-stack-64M.parquet"
+contents_path = "utils/the-stack-64M-contents.txt"
+contents_index_path = "utils/the-stack-64M-contents-index.json"
 rocksdb_output_path = "utils/"
 
 # define orders

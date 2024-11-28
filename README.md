@@ -1,32 +1,39 @@
 # PPC The Stack into RocksDB
 
-This repo contains the Python code used to test the Permute-Partition-Compress paradigm on Software Heritage and RocksDB. We used Software Heritage code hosted by Hugging Face at [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), permuted it using different heuristics and created various RocksDB databases to test their differences and performances.
+In this repository, we explore Permute Partition Compress (PPC) techniques on source-code archives to employ the solution on the Software Heritage archive (SWH). Our focus is on indexing and compressing source code files from various code repositories into RocksDB. For our tests, we utilized a source-code dataset hosted by Hugging Face at [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), permuted the data using different heuristics, and created multiple RocksDB databases to assess their differences and performance.
 
-The benchmark architecture is the following. At the beginning we read the entire the-stack parquet (without the content of the files) and produce  a pandas dataframe, that we will sort differently based on predefined functions. Than, for each element in the sorted dataframe, we get the content of the file from the contents txt and, after accurately creating the related key, we insert it in a RocksDB. ![benchmark architecture](utils/benchmark_architecture.png)
+The base of the benchmark, shared between the two benchmarks `benchmark-not_sorted.py` and `benchmark-pre_sorted.py`, is the following: we first process the parquet file, apply different file-similarity-based sorting functions to create specific keys for the database. Then, we create key-value pairs with the newly created key and the file as the value, and insert them into RocksDB. Altough, there are some differences between the two benchmarks:
+- `benchmark-not_sorted.py` doesn't pre-sort the keys before inserting into the database: we read the parquet and, for each row, we create the key-value pair and write it directly into RocksDB, relying on the storage engine to maintain key order. We don't need additional files to execute this benchmark.
+- `benchmark-pre_sorted.py` pre-sorts the keys before insertion: we read the parquet file into a pandas dataframe, we sort it and we later insert the key-value pairs in RocksDB. In this way, we force the order on RocksDB by giving it pre-ordered data. Given the size of the datasets, we cannot sort the entire dataframe in memory, and we need to rely on mmap to read the file contents from another file. For this purpose, as we specify in the "Setup additional files" section of this README, we use `create_contents.py`.
+
+<!-- ![benchmark architecture](utils/benchmark_architecture.png) -->
+
+### Repository structure
 
 The repository is structured as follows:
-- `benchmark-pre_sorted.py` and `benchmark-not_sorted.py` are the benchmarks written in python;
-- `create_contents.py` is an auxiliary files needed to setup the environment;
-- `scripts/` contains the files needed for testing smaller things that we used in the development process and may still provide useful for future use;
-- `utils/` contains some utility files that we will see later, other than the `testing/` directory with scripts that we used to test the feasibility and performance of our solution.
+- `benchmark-pre_sorted.py` and `benchmark-not_sorted.py`: benchmarks scripts written in Python.
+- `config.py`: configuration options to be used in the benchmarks: block size, compressor, order and file paths.
+- `create_contents.py`: support script to create auxiliary files needed by the experiments
+- `scripts/`: contains smaller testing scripts we used during development, and the script `download_from_hf.py` to download the dataset from HuggingFace.
+- `utils/`: contains an example parquet (for a toy execution of our benchmarks) and you can use this directory for testing purposes, as we will see later.
+- `mergesort-lsh`: ...
 
-The entire code is tested with Python version 3.11.9, but may be executed also with 3.10.
+We executed our entire codebase using Python 3.11.9; a minimum of 3.10 is required.
 
-## Documentation and options
-Sorting options:
-- `parquet`: don't sort, keep the order of the input parquet
-- `rev_filename`: only sort by reversed filename
-- `ext-filename`: reversed order, not reversed words
-- `ext-filename-nopath`: same as above, but the path is excluded
-- `lang-ext-filename`: attemp to replicate the parquet order, sorting by language and filename
-- `filename_repo`: first sort by filename (reversed, so that all file with the same extension go together), than by repo if the filename is the same
-- `repo_filename`: first sort by repo, than by reversed filename
-- `tlsh`: sort by tlsh fingerprint (locality-sensitive hashing), than by size if the fingerprint is the same.
+### Sorting options
+In our benchmarks, we considered the following content-similarity-based sorting options:
+- `parquet`: no sorting; retains the natural file order of the input dataset.
+- `rev-filename`: uses the reversed filename as the sorting key. For example, `path/to/file.ext` becomes `txe.elif/ot/htap`.
+- `ext-filename`: sorts by file extension, followed by the filename, and the path in reverse. For example, `path/to/file.ext` becomes `ext.file/ot/htap`.
+- `ext-filename-nopath`: sorts by file extension followed by the filename. For example, `path/to/file.ext` becomes `ext.file`.
+- `lang-ext-filename`: uses the programming language, followed by the filename (e.g., `python-py.main`).
+- `filename_repo`: sorts by filename (reversed) and then by repository if filenames are identical.
+- `repo_filename`: sorts by repository and then by reversed filename.
+- `tlsh`: sorts by TLSH fingerprint (locality-sensitive hashing).
+
+Every order, after the options already seen, appends to the key the file size and the sha of the file, to order files by size and avoid duplicate keys.
 
 ## Development environment setup
-The repo contains two files for the benchmark:
-- `benchmark-pre_sorted.py` that represents the standard benchmark, in which we sort the record before inserting into RocksDB
-- `benchmark-not_sorted.py` that, differently from the other benchmark, doesn't sort the elements, interting into RocksDB as we read it from a stream of data. In this way, we rely on the storage engine to keep data ordered by key
 
 In order to download the repo and setup the virtual environment, you need to run these commands:
 ```bash
@@ -37,24 +44,29 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-On the machine we used, everything should already be setup for the usage and only the things specified above are necessary. Otherwise, follow the next section. If you want to just run the toy example we provide, with files inside the `utils/` directory, you can just run `python3 benchmark-not_sorted.py` or `python3 benchmark-pre_sorted.py` without installing anything.
+This repository includes a small toy dataset located in the `utils` folder, for fast experiments. The default testing dataset is `utils/the-stack-64M.parquet`, as specified in `config.py`, and you can skip the "Download the datasets" section.
 
 ### Download the datasets
-The benchmark can be executed on any Parquet file with at least these columns: `["hexsha", "max_stars_repo_path", "max_stars_repo_name", "content", "size", "lang"]`. As we did ourselves, it's very easy to remodel a dataset to execute it with our benchmarks, simply renaming the Parquet columns is necessary. Otherwise, to download a ready-made dataset like [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), you can follow HuggingFace's guide to install the dataset and export it to Parquet. Anyway, in `scripts/download_from_hf.py` you will find the code to download the The Stack dedup dataset, in which you can simply customize the paths and run the code.
+To download a ready-made dataset like [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), follow Hugging Face's guide to install the dataset and export it to Parquet. In `scripts/download_from_hf.py`, you'll find code to download The Stack dedup dataset; customize the paths and run the code. Any parquet file containing at least the columns `["hexsha", "max_stars_repo_path", "max_stars_repo_name", "content", "size", "lang"]` is eligible for testing with this repository.
 
-**If you only aim to test `benchmark-not_sorted.py`, you can skip this next part.**
+In order to execute a toy experiment with our codebase, we already provide a pre-downloaded Parquet file, `utils/the-stack-64M.parquet`, comprising a subset the first 64 MiB from The Stack v1 dedup.
 
-After downloading the dataset, you need to create two auxiliary files: `contents.txt` and `contents-index.json`. The former contains the contents of all the files of the dataset, and the second one is its index with starting and ending positions to get the specific file contents. These files are as big as the datasets, but are needed only with the `benchmark-pre_sorted.py`, in which we cannot sort the entire dataframe, contents included. The two files can be created simply by running `python3 scripts/create_contents.py`, replacing the paths with yours in the first lines of the file.
+### Setup additional files
+If you aim to only run `benchmark-not_sorted.py`, you can skip this part.
 
-At this point, you should have everything set up and ready to run the benchmark.
+To run `benchmark-pre_sorted.py`, you need to create the auxiliary files `contents.txt` and `contents-index.json`. The former contains the dataset's file contents, while the latter serves as an index with starting and ending positions for accessing specific file contents. These files, which essentially replicate the dataset, are utilized within `benchmark-pre_sorted.py`, where sorting the entire DataFrame (including contents) is not feasible. You can create these files by running `python3 create_contents.py`, modifying the paths in the initial lines of the script as needed.
 
-### Run the benchmark
-As already said, the benchmarks are `benchmark-pre_sorted.py` and `benchmark-not_sorted.py`. They both read from `config.py` file, in which you have to list the paths of the files created in the previous section, the output path for the RocksDB database, and the parameters for the execution of the benchmark (block size, compressor, ordering heuristic). The predefined paths that you find in the file are available to you as a toy test, reading very small parquet and contents file from the `utils/` directory, and the best parameters that we found in our research: 16 kB block size, zlib-6 compressor, ext-filename-nopath order.
+## Run the benchmark
 
-Then, after setting up `config.py`, you can execute the code just by running one of these commands:
+Both benchmarks, `benchmark-pre_sorted.py` and `benchmark-not_sorted.py`, read configurations from `config.py`, which you can modify to specify the datasets to test, output paths for the RocksDB database, and benchmark execution parameters (block size, compressor, ordering heuristic). The default settings in `config.py` include a block size of 16 kB, zlib-6 as the compressor, and `ext-filename-nopath` as the file reordering method, as these settings yielded competitive results in our research. After configuring `config.py`, run:
+
 ```bash
 python3 benchmark-not_sorted.py
 python3 benchmark-pre_sorted.py
 ```
 
-We strongly recommend using the `nohup` command to run the tests in the background, due to the long execution times required for the benchmarks on larger datasets.
+We recommend using the `nohup` command to run tests in the background due to the long execution times required for larger datasets. For example:
+
+```bash
+nohup python3 benchmark-not_sorted.py &
+```
