@@ -1,5 +1,9 @@
 # PPC The Stack into RocksDB
 
+> This repository has been made during my Master Thesis in collaboration with [The Software Heritage Archive](https://www.softwareheritage.org/), and has been supervised by Prof. Paolo Ferragina (Scuola Sant'Anna di Pisa) and Dr. Francesco Tosoni (Università di Pisa). 
+> 
+> This work was conducted within the project "Compression of peta-scale collections of textual and source-code files", financed by the Italian PNRR initiative and finalized for an application on The Software Heritage Archive.
+
 In this repository, we explore Permute Partition Compress (PPC) techniques on source-code archives to employ the solution on the Software Heritage archive (SWH). Our focus is on indexing and compressing source code files from various code repositories into RocksDB. For our tests, we utilized a source-code dataset hosted by Hugging Face at [the-stack-v1-dedup](https://huggingface.co/datasets/bigcode/the-stack-dedup), permuted the data using different heuristics, and created multiple RocksDB databases to assess their differences and performance.
 
 The base of the benchmark, shared between the two benchmarks `benchmark-not_sorted.py` and `benchmark-pre_sorted.py`, is the following: we first process the parquet file, apply different file-similarity-based sorting functions to create specific keys for the database. Then, we create key-value pairs with the newly created key and the file as the value, and insert them into RocksDB. Altough, there are some differences between the two benchmarks:
